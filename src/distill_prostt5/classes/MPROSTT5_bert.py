@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers.modeling_outputs import TokenClassifierOutput
-
+import math
 from transformers import PreTrainedTokenizer, ModernBertModel, ModernBertConfig
 import re
 
@@ -77,6 +77,46 @@ Define the Mini ProstT5 - model
 Can play around with the size etc I guess
 """
 
+# class SwiGLU(nn.Module):
+#     def forward(self, x):
+#         print("Input to SwiGLU:", x.shape)
+#         hidden_dim = x.shape[-1] // 2  # Ensure an even split
+#         print("hidden dim:", hidden_dim)
+#         x, gate = x[..., :hidden_dim], x[..., hidden_dim:2 * hidden_dim]  # Avoid empty tensor
+#         print("x dim:", x.shape)
+#         print("gate dim:", gate.shape)
+#         com = x * torch.sigmoid(gate)
+#         print("combined dim:", com.shape)
+#         return x * torch.sigmoid(gate)
+
+# https://github.com/lucidrains/PaLM-pytorch/blob/7164d13d5a831647edb5838544017f387130f987/palm_pytorch/palm_pytorch.py#L61C1-L64C32
+
+class SwiGLU(nn.Module):
+    def forward(self, x, gate):
+        return F.silu(gate) * x
+
+"""
+Need to modify the MLP to pass the gate to SwiGLU in the forward pass
+"""
+
+class ModernBertMLPSwiGLU(nn.Module):
+    """
+    Applies the SwiGLU at the end of each ModernBERT layer.
+    """
+
+    def __init__(self, config: ModernBertConfig):
+        super().__init__()
+        self.config = config
+        self.Wi = nn.Linear(config.hidden_size, int(config.intermediate_size) * 2, bias=config.mlp_bias)
+        self.act = SwiGLU()
+        self.drop = nn.Dropout(config.mlp_dropout)
+        self.Wo = nn.Linear(config.intermediate_size, config.hidden_size, bias=config.mlp_bias)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        input, gate = self.Wi(hidden_states).chunk(2, dim=-1) 
+        return self.Wo(self.drop(self.act(input, gate)))
+
+
 class MPROSTT5(nn.Module):
     def __init__(
             self,
@@ -84,11 +124,14 @@ class MPROSTT5(nn.Module):
             num_layers=6,
             hidden_size=512,
             intermediate_size=512, # dunno maybe can play with this
-            num_heads=8
+            num_heads=8,
+            alpha=0.3, # contribution of colabfold Cross Entropy loss 
+            activation='gelu' # gelu or swiglu
     ):
         super(MPROSTT5, self).__init__()
 
         self.tokenizer = CustomTokenizer()
+        self.alpha = alpha
 
         # https://huggingface.co/docs/transformers/en/model_doc/modernbert#transformers.ModernBertModel
 
@@ -128,7 +171,15 @@ class MPROSTT5(nn.Module):
             reference_compile = None,
 
         )
+
+       
         self.model = ModernBertModel(self.configuration)
+        # Replace activation function
+
+        if activation == 'swiglu':
+            for layer in self.model.layers:
+                layer.mlp = ModernBertMLPSwiGLU(self.configuration)
+        
         self.projection = nn.Linear(hidden_size, 20, bias=False)  # Project to ProstT5-CNN output dimension (20 states)
         self.kl_loss = nn.KLDivLoss(reduction="batchmean")
 
@@ -165,7 +216,7 @@ class MPROSTT5(nn.Module):
 
             # Combined Loss
             # alpha is the amount of colabfold loss here
-            alpha = 0.3
+            alpha = self.alpha # 0.3 by default
             loss = (1-alpha)* kl_loss + alpha * ce_loss  # Adjust weight as needed
 
 
@@ -181,14 +232,14 @@ class MPROSTT5(nn.Module):
             # print("colabfold")
             # print(masked_labels)
             
-            #accuracy = (predicted_classes == target_classes).float().mean().item() * 100
-            #print(f"mini vs vanilla ProstT5 Accuracy: {accuracy:.2f}%")
+            # accuracy = (predicted_classes == target_classes).float().mean().item() * 100
+            # print(f"mini vs vanilla ProstT5 Accuracy: {accuracy:.2f}%")
 
-            #accuracy = (predicted_classes == masked_labels).float().mean().item() * 100
-            #print(f"mini vs colabfold Accuracy: {accuracy:.2f}%")
+            # accuracy = (predicted_classes == masked_labels).float().mean().item() * 100
+            # print(f"mini vs colabfold Accuracy: {accuracy:.2f}%")
 
-            #accuracy = (target_classes == masked_labels).float().mean().item() * 100
-            #print(f"vanilla vs colabfold Accuracy: {accuracy:.2f}%")
+            # accuracy = (target_classes == masked_labels).float().mean().item() * 100
+            # print(f"vanilla vs colabfold Accuracy: {accuracy:.2f}%")
 
         return TokenClassifierOutput(
             loss=loss,

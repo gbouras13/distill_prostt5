@@ -220,6 +220,31 @@ def merge(
     type=int,
     default=50
 )
+@click.option(
+    "-a",
+    "--alpha",
+    help="Weighted contribution of Colabfold CE loss to total loss",
+    type=float,
+    default=0.3
+)
+@click.option(
+    "--activation",
+    help="activation type - choose gelu or swiglu",
+    type=str,
+    default='gelu'
+)
+@click.option(
+    "--num_layers",
+    help="Number of layers",
+    type=int,
+    default=6
+)
+@click.option(
+    "--num_heads",
+    help="Number of attention heads",
+    type=int,
+    default=8
+)
 def train(
     ctx,
     train_path,
@@ -228,6 +253,10 @@ def train(
     model_ckpt,
     batch_size,
     epochs,
+    alpha,
+    activation,
+    num_layers,
+    num_heads,
     **kwargs,
 ):
     """Trains distilled Mini ProstT5 model"""
@@ -239,7 +268,7 @@ def train(
     eval_set = PrecomputedProteinDataset(eval_path)  # dataset.h5
 
     # Initialize Mini ProstT5 Model
-    model = MPROSTT5().to(device)
+    model = MPROSTT5(num_layers=num_layers,num_heads=num_heads, alpha=alpha, activation=activation).to(device)
     # Print number of trainable parameters
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     total_params = sum(p.numel() for p in model_parameters)
@@ -258,7 +287,7 @@ def train(
         warmup_ratio=0.1,
         per_device_train_batch_size=batch_size, # batch size
         gradient_accumulation_steps=1,
-        num_train_epochs=500,
+        num_train_epochs=epochs,
     )
 
     # Initialize Trainer
