@@ -36,7 +36,9 @@ distill_prostt5 merge -d tests/test_h5s/ -p merged.h5
 * 11M params - you can see the exact architecutre in `distill_prostt5/classes/MPROSTT5_bert.py`
 * It is vanilla with 6 layers, 8 attention heads, and hidden dimension of 512
 * Will ablate this
-* The training loss is 
+* The training loss is `loss = (1-alpha)* kl_loss + alpha * ce_loss` (`alpha` is 0.3 for now, will ablate)
+    * `kl_loss` is vs the ProstT5-CNN logits 
+    * `ce_loss` is vs the colabfold 3Di "ground truth"
 
 
 
