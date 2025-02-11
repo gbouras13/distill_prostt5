@@ -8,7 +8,13 @@ __pycache__/
 */*/*/__pycache__/*
 # C extensions
 *.so
-
+*.pyc
+*/*.pyc
+*/*/*.pyc
+*/*/*/*.pyc
+src/distill_prostt5/__pycache__/__init__.cpython-311.pyc
+src/distill_prostt5/classes/__pycache__/
+src/distill_prostt5/classes/__pycache__/*
 # database
 src/database
 src/database/*

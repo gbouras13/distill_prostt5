@@ -106,7 +106,6 @@ def precompute(
     prost_tokenizer = T5Tokenizer.from_pretrained(prost_model_name)
     prost_model = T5EncoderModel.from_pretrained(prost_model_name).eval().to(device)
 
-
     logger.info(f"Starting Computing ProstT5 embeddings for {len(aa_records)} sequences from {input}")
 
     # reead in the ProstT5 CNN
@@ -146,6 +145,15 @@ def merge(
 ):
     """merges precomputes embeddings and tokenised input for distillation"""
 
+    # a format change is required to merge and lookup the data efficiently
+    # saving each protein and a group in the hdf5 fdile is very inefficient, and observed it struggles above 2.88 M proteins
+    # It is like making 17M files in a filesystem 
+    # https://stackoverflow.com/questions/35321093/limit-on-number-of-hdf5-datasets
+    # therefore, better to store as 4 datasets (one for input ids, labels, attention mask and target)
+    # with 17M entries - like and array much cheaper to look up
+    # I should have written precompute like this too, but have already computed the 17M embeddings
+    # so will modify PrecomputedProteinDataset instead
+
     logger.info(f"Finding all .h5 files in {directory} to merge")
     file_paths = glob.glob(os.path.join(directory, '**', '*.h5'), recursive=True)
 
@@ -153,27 +161,34 @@ def merge(
     logger.info(f"There are {file_paths}")
     logger.info(f"Starting merging into {precompute_path}")
 
+    total_groups = 0
+    for file_path in file_paths:
+        with h5py.File(file_path, "r") as f:
+            total_groups += len(f.keys())  # Assuming each top-level group represents a dataset entry
 
     with h5py.File(precompute_path, "w") as merged_file:
         current_index = 0
-        
-        # Iterate over each HDF5 file
+        merged_file.create_dataset('input_ids', (total_groups,), dtype=h5py.special_dtype(vlen=np.int32))
+        merged_file.create_dataset('labels', (total_groups,), dtype=h5py.special_dtype(vlen=np.int32))
+        merged_file.create_dataset('attention_mask', (total_groups,), dtype=h5py.special_dtype(vlen=np.int32))
+        merged_file.create_dataset('target', (total_groups, 512), dtype=h5py.special_dtype(vlen=np.float32))
+
+    # Iterate over each HDF5 file
         for file_path in file_paths:
             with h5py.File(file_path, "r") as f:
-                # Iterate over the groups in the current file
-                for i, group_name in enumerate(f.keys()):
+            # Iterate over the groups in the current file
+                for group_name in f.keys():
+                    print(current_index)
                     group = f[group_name]
-                    new_group_name = str(current_index + i)
-                    new_group = merged_file.create_group(new_group_name)
-                    
-                    # Copy datasets from the current group
+                # Iterate over the datasets in the group and save them individually
                     for name, data in group.items():
-                        new_group.create_dataset(name, data=data[()])
-                
-                # Update the index for the next file's groups
-                current_index += len(f.keys())
+                    # Create dataset under the 'proteins' group with unique names
+                        merged_file[name][current_index] = data
+                    current_index += 1
 
     logger.info(f"Finished merging into {precompute_path}")
+
+
     
 
 
@@ -210,9 +225,9 @@ def merge(
 @click.option(
     "-b",
     "--batch_size",
-    help="Batch size",
+    help="Batch size per device - 192 can fit in MI250 GPU memory",
     type=int,
-    default=16
+    default=192
 )
 @click.option(
     "--epochs",
@@ -229,21 +244,45 @@ def merge(
 )
 @click.option(
     "--activation",
-    help="activation type - choose gelu or swiglu",
+    help="activation type - choose gelu or swiglu, defaults to swiglu",
     type=str,
-    default='gelu'
+    default='swiglu'
 )
 @click.option(
     "--num_layers",
-    help="Number of layers",
+    help="Number of layers (default to 6)",
     type=int,
     default=6
 )
 @click.option(
     "--num_heads",
-    help="Number of attention heads",
+    help="Number of attention heads (default to 8)",
     type=int,
-    default=8
+    default=8,
+)
+@click.option(
+    "--hidden_size",
+    help="Hidden size (default to 512)",
+    type=int,
+    default=512,
+)
+@click.option(
+    "--learning_rate",
+    help="learning rate (default to 3e-4)",
+    type=float,
+    default=3e-4,
+)
+@click.option(
+    "--save_steps",
+    help="Save checkpoint this many steps (default to 1000)",
+    type=int,
+    default=1000,
+)
+@click.option(
+    "--logging_eval_steps",
+    help="Eval and log at this many steps (default to 25)",
+    type=int,
+    default=25,
 )
 def train(
     ctx,
@@ -257,6 +296,10 @@ def train(
     activation,
     num_layers,
     num_heads,
+    hidden_size,
+    learning_rate,
+    save_steps,
+    logging_eval_steps,
     **kwargs,
 ):
     """Trains distilled Mini ProstT5 model"""
@@ -268,7 +311,7 @@ def train(
     eval_set = PrecomputedProteinDataset(eval_path)  # dataset.h5
 
     # Initialize Mini ProstT5 Model
-    model = MPROSTT5(num_layers=num_layers,num_heads=num_heads, alpha=alpha, activation=activation).to(device)
+    model = MPROSTT5(hidden_size=hidden_size, num_layers=num_layers,num_heads=num_heads, alpha=alpha, activation=activation).to(device)
     # Print number of trainable parameters
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     total_params = sum(p.numel() for p in model_parameters)
@@ -280,13 +323,13 @@ def train(
         save_strategy="steps",
         logging_strategy="steps",
         evaluation_strategy="steps",
-        eval_steps=25,
-        save_steps=5000,     
-        logging_steps=25,
-        learning_rate=3e-4,
+        eval_steps=logging_eval_steps,
+        save_steps=save_steps,     
+        logging_steps=logging_eval_steps,
+        learning_rate=learning_rate,
         warmup_ratio=0.1,
         per_device_train_batch_size=batch_size, # batch size
-        gradient_accumulation_steps=1,
+        gradient_accumulation_steps=1, 
         num_train_epochs=epochs,
     )
 

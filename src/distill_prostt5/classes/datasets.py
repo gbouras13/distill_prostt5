@@ -9,6 +9,7 @@ import h5py
 from .CNN import CNN
 from torch.utils.data import Dataset
 from tqdm import tqdm
+import numpy as np
 
 """
 processes the colabfold input for labels
@@ -112,7 +113,7 @@ class ProteinDataset(Dataset):
 
 
 """
-Define reading dataset once precomputed
+Define reading dataset once precomputed and merged
 """
 
 class PrecomputedProteinDataset(Dataset):
@@ -124,12 +125,10 @@ class PrecomputedProteinDataset(Dataset):
         return len(self.h5f.keys())
 
     def __getitem__(self, idx):
-        
-        grp = self.h5f[str(idx)]
-        input_ids = torch.tensor(grp["input_ids"][:], dtype=torch.long)
-        labels = torch.tensor(grp["labels"][:], dtype=torch.long)
-        attention_mask = torch.tensor(grp["attention_mask"][:], dtype=torch.long)
-        target = torch.tensor(grp["target"][:], dtype=torch.float)
+        input_ids = torch.tensor(self.h5f['input_ids'][idx], dtype=torch.long)
+        labels = torch.tensor(self.h5f['labels'][idx], dtype=torch.long)
+        attention_mask = torch.tensor(self.h5f['attention_mask'][idx], dtype=torch.long)
+        target = torch.tensor( np.array(self.h5f['target'][idx].tolist(), dtype=np.float32), dtype=torch.float)
 
         return {
             "input_ids": input_ids.squeeze(0),

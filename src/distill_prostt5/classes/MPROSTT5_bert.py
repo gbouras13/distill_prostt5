@@ -6,13 +6,43 @@ import math
 from transformers import PreTrainedTokenizer, ModernBertModel, ModernBertConfig
 import re
 
+
+
+
+# def cosine_similarity_token_composition(pred_tokens: torch.Tensor, label_tokens: torch.Tensor, vocab_size: int) -> torch.Tensor:
+#     """
+#     https://github.com/nayoung10/ASSD/blob/e4b9fd9b7c58fa3bb27231f2cf42aa02758f469b/src/modules/metrics.py#L76
+#     Computes the cosine similarity between the token composition of predicted and label sequences.
+
+#     Args:
+#         pred_tokens (torch.Tensor): Tensor of predicted token indices (batch_size, seq_len).
+#         label_tokens (torch.Tensor): Tensor of ground-truth token indices (batch_size, seq_len).
+#         vocab_size (int): Total number of tokens in the vocabulary.
+
+#     Returns:
+#         torch.Tensor: Cosine similarity scores with shape (batch_size, seq_len, vocab_size).
+#     """
+#     def get_token_distribution(tokens: torch.Tensor, vocab_size: int):
+#         """Computes the normalized token frequency distribution."""
+#         batch_size = tokens.shape[0]
+#         token_counts = torch.zeros((batch_size, vocab_size), device=tokens.device)
+#         for i in range(batch_size):
+#             token_counts[i].scatter_add_(0, tokens[i], torch.ones_like(tokens[i], dtype=torch.float))
+#         return F.normalize(token_counts, p=2, dim=1)  # L2 normalize
+
+#     # Compute token distributions
+#     pred_dist = get_token_distribution(pred_tokens, vocab_size)
+#     label_dist = get_token_distribution(label_tokens, vocab_size)
+
+#     # Compute cosine similarity
+#     cos_sim = (pred_dist * label_dist).sum(dim=1)  # Cosine similarity per batch
+#     return cos_sim
+
 """
 Define the tokenizer for Mini ProstT5 - amino acids + 3 special tokens. 
 We don't need to tokenize 3Di as they will never be input (this is explicitly AA -> 3Di convertor), so vocab size is only 28
 The tokenisation matches ProstT5 just for ease 
 """
-
-
 
 class CustomTokenizer(PreTrainedTokenizer):
     def __init__(self, vocab=None, unk_token="<unk>", pad_token="<pad>", eos_token="</s>"):
@@ -44,15 +74,13 @@ class CustomTokenizer(PreTrainedTokenizer):
 
     def get_vocab(self):
         """ Returns the vocabulary dictionary. """
-        return self.vocab  # ✅ Required for Hugging Face compatibility
+        return self.vocab 
 
     def _tokenize(self, text):
-        # Example: simple splitting for amino acid sequences
-        # Customize this based on your sequence processing logic
-        return list(text)  # Just split string into individual characters
+        return list(text)  
     
     def _convert_token_to_id(self, token):
-        return self.vocab.get(token, self.vocab.get(self.unk_token))  # Return id for token
+        return self.vocab.get(token, self.vocab.get(self.unk_token))  
     
     def _convert_id_to_token(self, index):
         # Reverse the vocab to convert id back to token
@@ -74,20 +102,8 @@ class CustomTokenizer(PreTrainedTokenizer):
 """
 Define the Mini ProstT5 - model
 11M param modernBert https://huggingface.co/docs/transformers/en/model_doc/modernbert#transformers.ModernBertModel
-Can play around with the size etc I guess
+Can play around with the size
 """
-
-# class SwiGLU(nn.Module):
-#     def forward(self, x):
-#         print("Input to SwiGLU:", x.shape)
-#         hidden_dim = x.shape[-1] // 2  # Ensure an even split
-#         print("hidden dim:", hidden_dim)
-#         x, gate = x[..., :hidden_dim], x[..., hidden_dim:2 * hidden_dim]  # Avoid empty tensor
-#         print("x dim:", x.shape)
-#         print("gate dim:", gate.shape)
-#         com = x * torch.sigmoid(gate)
-#         print("combined dim:", com.shape)
-#         return x * torch.sigmoid(gate)
 
 # https://github.com/lucidrains/PaLM-pytorch/blob/7164d13d5a831647edb5838544017f387130f987/palm_pytorch/palm_pytorch.py#L61C1-L64C32
 
@@ -201,7 +217,6 @@ class MPROSTT5(nn.Module):
             # print(labels)
             # print(mask)
             # print(masked_logits)
-            # print(masked_logits.shape)
 
             # Compute softmax and log-softmax only on the masked values
             output = F.log_softmax(masked_logits, dim=1)
@@ -209,7 +224,6 @@ class MPROSTT5(nn.Module):
 
             # Compute KL loss
             kl_loss = self.kl_loss(output, target_probs)
-
 
             # Cross-Entropy Loss
             ce_loss = F.cross_entropy(masked_logits, masked_labels, reduction="mean")
@@ -219,27 +233,58 @@ class MPROSTT5(nn.Module):
             alpha = self.alpha # 0.3 by default
             loss = (1-alpha)* kl_loss + alpha * ce_loss  # Adjust weight as needed
 
-
-            predicted_classes = torch.argmax(masked_logits, dim=1)  # Get index of max logit
+            predicted_classes = torch.argmax(masked_logits, dim=1)  
             # print("pred")
             # print(predicted_classes)
+            target_classes = torch.argmax(masked_target, dim=1)  
 
-
-            target_classes = torch.argmax(masked_target, dim=1)  # Get index of max logit
-            # print("target")
+            # print("vanilla")
             # print(target_classes)
 
             # print("colabfold")
             # print(masked_labels)
             
-            # accuracy = (predicted_classes == target_classes).float().mean().item() * 100
-            # print(f"mini vs vanilla ProstT5 Accuracy: {accuracy:.2f}%")
+            accuracy = (predicted_classes == target_classes).float().mean().item() * 100
+            print(f"mini vs vanilla ProstT5 Accuracy: {accuracy:.2f}%")
 
-            # accuracy = (predicted_classes == masked_labels).float().mean().item() * 100
-            # print(f"mini vs colabfold Accuracy: {accuracy:.2f}%")
+            accuracy = (predicted_classes == masked_labels).float().mean().item() * 100
+            print(f"mini vs colabfold Accuracy: {accuracy:.2f}%")
 
-            # accuracy = (target_classes == masked_labels).float().mean().item() * 100
-            # print(f"vanilla vs colabfold Accuracy: {accuracy:.2f}%")
+            accuracy = (target_classes == masked_labels).float().mean().item() * 100
+            print(f"vanilla vs colabfold Accuracy: {accuracy:.2f}%")
+
+            # some class balance code - didn't make much of a difference but not 100% sure is correct
+        
+            #  L=−∑logπ(at∣st)Rt
+            # where the reward function Rt is the cosine distance
+            # logπ(at∣st) is the log probability of token a sampled given the state s at step t. 
+
+            # m = torch.distributions.Categorical(logits=masked_logits)
+            # sampled_actions = m.sample()
+            # cosim_reward = cosine_similarity_token_composition(sampled_actions, masked_labels, vocab_size=20)
+            # print("cosine similarity",cosim_reward.mean())
+            # policy_loss = -m.log_prob(sampled_actions) * cosim_reward
+            # policy_loss = policy_loss.mean()
+            # print("cosine reinforce loss", policy_loss)
+
+            # beta = 1 # just try it out
+
+            # loss = (1-alpha)* kl_loss + alpha * ce_loss + beta * policy_loss  # Adjust weight as needed
+
+
+            # cosim_reward = cosine_similarity_token_composition(predicted_classes, masked_labels, vocab_size=28)
+
+            # def cosine_distance_loss(cos_sim):
+            #     return ((1 - cos_sim) ** 2).mean() 
+
+            # cos_loss = cosine_distance_loss(cosim_reward)
+            # # print(cos_loss)
+
+            # beta = 1 # just try it out
+
+            # loss = (1-alpha)* kl_loss + alpha * ce_loss + beta * cos_loss  # Adjust weight as needed
+
+        
 
         return TokenClassifierOutput(
             loss=loss,
