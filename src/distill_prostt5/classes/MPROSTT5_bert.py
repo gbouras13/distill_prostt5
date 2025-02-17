@@ -142,7 +142,7 @@ class MPROSTT5(nn.Module):
             intermediate_size=512, # dunno maybe can play with this
             num_heads=8,
             alpha=0.3, # contribution of colabfold Cross Entropy loss 
-            activation='gelu' # gelu or swiglu
+            activation='swiglu' # gelu or swiglu
     ):
         super(MPROSTT5, self).__init__()
 
@@ -200,9 +200,11 @@ class MPROSTT5(nn.Module):
         self.kl_loss = nn.KLDivLoss(reduction="batchmean")
 
     def forward(self, input_ids=None, labels=None, attention_mask=None, target=None):
+        print(input_ids.shape)
         outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
         last_hidden_states = outputs.last_hidden_state 
         logits = self.projection(last_hidden_states)  # projection to ProstT5 size # B  x seq_len x embedding dim (20)
+        print(logits.shape)
         loss = None
         if target is not None:
 
@@ -234,24 +236,24 @@ class MPROSTT5(nn.Module):
             loss = (1-alpha)* kl_loss + alpha * ce_loss  # Adjust weight as needed
 
             predicted_classes = torch.argmax(masked_logits, dim=1)  
-            # print("pred")
-            # print(predicted_classes)
+            print("pred")
+            print(predicted_classes)
             target_classes = torch.argmax(masked_target, dim=1)  
 
-            # print("vanilla")
-            # print(target_classes)
+            print("vanilla")
+            print(target_classes)
 
-            # print("colabfold")
-            # print(masked_labels)
+            print("colabfold")
+            print(masked_labels)
             
-            # accuracy = (predicted_classes == target_classes).float().mean().item() * 100
-            # print(f"mini vs vanilla ProstT5 Accuracy: {accuracy:.2f}%")
+            accuracy = (predicted_classes == target_classes).float().mean().item() * 100
+            print(f"mini vs vanilla ProstT5 Accuracy: {accuracy:.2f}%")
 
-            # accuracy = (predicted_classes == masked_labels).float().mean().item() * 100
-            # print(f"mini vs colabfold Accuracy: {accuracy:.2f}%")
+            accuracy = (predicted_classes == masked_labels).float().mean().item() * 100
+            print(f"mini vs colabfold Accuracy: {accuracy:.2f}%")
 
-            # accuracy = (target_classes == masked_labels).float().mean().item() * 100
-            # print(f"vanilla vs colabfold Accuracy: {accuracy:.2f}%")
+            accuracy = (target_classes == masked_labels).float().mean().item() * 100
+            print(f"vanilla vs colabfold Accuracy: {accuracy:.2f}%")
 
             # some class balance code - didn't make much of a difference but not 100% sure is correct
         
@@ -294,7 +296,6 @@ class MPROSTT5(nn.Module):
 
     def tokenize_input(self, sequences):
         return self.tokenizer(sequences, padding=True, truncation=True, return_tensors="pt")
-
 
 """
 These are the 3Di tokens corresponding to the predicted classes (by the CNN)

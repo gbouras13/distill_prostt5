@@ -533,9 +533,23 @@ def infer(
                             # slice off padding 
                             pred = logits[batch_idx, 0:s_len, :].squeeze()
 
+                     
+
+                            # probabilities = torch.nn.functional.softmax(pred, dim=-1)
+                            # print(probabilities)
+                            # print(probabilities.shape)
+
+                            # Get max softmax values
+                            # max_softmax_values = probabilities.max(dim=1, keepdim=True)[0]
+                            # print(max_softmax_values)
+
                             pred = toCPU(
-                                torch.max(pred, dim=1, keepdim=True)[1]
+                                torch.argmax(pred, dim=1, keepdim=True)
                             ).astype(np.byte)
+
+                            #print(pred.shape)
+
+                            #print(pred)
 
 
 
