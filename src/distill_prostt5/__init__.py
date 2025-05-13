@@ -378,7 +378,7 @@ def train(
         output_dir=output_dir,
         save_strategy="steps",
         logging_strategy="steps",
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=logging_eval_steps,
         save_steps=save_steps,     
         logging_steps=logging_eval_steps,
