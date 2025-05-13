@@ -207,6 +207,22 @@ def merge(
 
     logger.info(f"Finished merging into {precompute_path}")
 
+"""
+LR scheduler options
+"""
+# Define the allowed learning rate scheduler options
+LR_SCHEDULER_CHOICES = [
+    "linear",
+    "cosine",
+    "cosine_with_restarts",
+    "polynomial",
+    "constant",
+    "constant_with_warmup",
+    "inverse_sqrt",
+    "reduce_lr_on_plateau",
+    "cosine_with_min_lr",
+    "warmup_stable_decay"
+]
 
     
 
@@ -314,6 +330,13 @@ def merge(
     help="Only tokenize & randomly crop sequences, do not embed and calculate logits.",
     is_flag=True,
 )
+@click.option(
+    "--lr_scheduler_type",
+    type=click.Choice(LR_SCHEDULER_CHOICES, case_sensitive=False),
+    default="linear",
+    show_default=True,
+    help="Type of learning rate scheduler to use."
+)
 def train(
     ctx,
     train_path,
@@ -332,6 +355,7 @@ def train(
     logging_eval_steps,
     num_workers,
     no_logits,
+    lr_scheduler_type,
     **kwargs,
 ):
     """Trains distilled Mini ProstT5 model"""
@@ -365,6 +389,7 @@ def train(
         num_train_epochs=epochs,
         dataloader_num_workers=num_workers, 
         dataloader_pin_memory=True,  # Optimizes performance on GPU
+        lr_scheduler_type=lr_scheduler_type
     )
 
     # Initialize Trainer
