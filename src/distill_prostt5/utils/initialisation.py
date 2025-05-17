@@ -479,7 +479,9 @@ def init_large_from_base(
 
     print(f"small layer count {pretrained_layers}")
     print(f"new layer count {new_layers}")
-    layer_mapping = [round(i * pretrained_layers / new_layers) for i in range(new_layers)]
+    #layer_mapping = [round(i * pretrained_layers / new_layers) for i in range(new_layers)]
+    # as HF is 0 indexed
+    layer_mapping = [round(i * (pretrained_layers - 1) / (new_layers - 1)) for i in range(new_layers)]
     print(f"layer mapping {layer_mapping}")
 
     # Initialize layers
