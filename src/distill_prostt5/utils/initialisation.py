@@ -29,7 +29,7 @@ functions to initialise a larger model using a smaller one
     You repeat the small embedding values across the new dimension.
     So each row in the embedding table is tiled left to right until it fills the bigger space.
 
-    most code taken from 
+    most code taken and modified from 
     https://github.com/AnswerDotAI/ModernBERT/blob/8c57a0f01c12c4953ead53d398a36f81a4ba9e38/src/bert_layers/initialization.py
     and 
     https://github.com/AnswerDotAI/ModernBERT/blob/8c57a0f01c12c4953ead53d398a36f81a4ba9e38/src/bert_layers/model.py#L1502
@@ -317,29 +317,25 @@ def tile_linear(
     with torch.no_grad():
         if linear_type == TileLinear.wqkv:
             if not bias_only:
-                new_linear.weight = nn.Parameter(
-                    tile_fused_qkv(pretrained_linear.weight, new_linear.weight, mode=mode),
-                    requires_grad=new_linear.weight.requires_grad,
+                new_linear.weight.data.copy_(
+                    tile_fused_qkv(pretrained_linear.weight, new_linear.weight, mode=mode)
                 )
             if pretrained_linear.bias is not None:
-                new_linear.bias = nn.Parameter(
-                    tile_fused_qkv(pretrained_linear.bias, new_linear.bias, mode=mode),
-                    requires_grad=new_linear.bias.requires_grad,
+                new_linear.bias.data.copy_(
+                    tile_fused_qkv(pretrained_linear.bias, new_linear.bias, mode=mode)
                 )
         elif linear_type == TileLinear.glu:
             if not bias_only:
-                new_linear.weight = nn.Parameter(
-                    tile_fused_glu(pretrained_linear.weight, new_linear.weight, mode=mode),
-                    requires_grad=new_linear.weight.requires_grad,
+                new_linear.weight.data.copy_(
+                    tile_fused_glu(pretrained_linear.weight, new_linear.weight, mode=mode)
                 )
             if pretrained_linear.bias is not None:
-                new_linear.bias = nn.Parameter(
-                    tile_fused_glu(pretrained_linear.bias, new_linear.bias, mode=mode),
-                    requires_grad=new_linear.bias.requires_grad,
+                new_linear.bias.data.copy_(
+                    tile_fused_glu(pretrained_linear.bias, new_linear.bias, mode=mode)
                 )
         elif linear_type == TileLinear.wqkvff:
             if not bias_only:
-                new_linear.weight = nn.Parameter(
+                new_linear.weight.data.copy_(
                     tile_fused_qkvff(
                         pretrained_linear.weight,
                         new_linear.weight,
@@ -349,11 +345,10 @@ def tile_linear(
                         new_mlp_size,
                         wqkvff_is_glu,
                         mode=mode,
-                    ),
-                    requires_grad=new_linear.weight.requires_grad,
+                    )
                 )
             if pretrained_linear.bias is not None:
-                new_linear.bias = nn.Parameter(
+                new_linear.bias.data.copy_(
                     tile_fused_qkvff(
                         pretrained_linear.bias,
                         new_linear.bias,
@@ -363,19 +358,16 @@ def tile_linear(
                         new_mlp_size,
                         wqkvff_is_glu,
                         mode=mode,
-                    ),
-                    requires_grad=new_linear.bias.requires_grad,
+                    )
                 )
         else:
             if not bias_only:
-                new_linear.weight = nn.Parameter(
-                    tile_weight(pretrained_linear.weight, new_linear.weight, mode=mode),
-                    requires_grad=new_linear.weight.requires_grad,
+                new_linear.weight.data.copy_(
+                    tile_weight(pretrained_linear.weight, new_linear.weight, mode=mode)
                 )
             if pretrained_linear.bias is not None:
-                new_linear.bias = nn.Parameter(
-                    tile_weight(pretrained_linear.bias, new_linear.bias, mode=mode),
-                    requires_grad=new_linear.bias.requires_grad,
+                new_linear.bias.data.copy_(
+                    tile_weight(pretrained_linear.bias, new_linear.bias, mode=mode)
                 )
 
 
@@ -397,15 +389,25 @@ def tile_norm(
     if isinstance(mode, str):
         mode = TileMode(mode)
 
+    # with torch.no_grad():
+    
+    #    new_norm.weight.data = nn.Parameter(
+    #        tile_weight(pretrained_norm.weight, new_norm.weight, mode=mode),
+    #        requires_grad=new_norm.weight.requires_grad,
+    #    )
+    #    if hasattr(pretrained_norm, "bias") and pretrained_norm.bias is not None:
+    
+    #        new_norm.bias.data = nn.Parameter(
+    #            tile_weight(pretrained_norm.bias, new_norm.bias, mode=mode),
+    #            requires_grad=new_norm.bias.requires_grad,
+    #        )
     with torch.no_grad():
-        new_norm.weight.data = nn.Parameter(
-            tile_weight(pretrained_norm.weight, new_norm.weight, mode=mode),
-            requires_grad=new_norm.weight.requires_grad,
+        new_norm.weight.data.copy_(
+            tile_weight(pretrained_norm.weight, new_norm.weight, mode=mode)
         )
         if hasattr(pretrained_norm, "bias") and pretrained_norm.bias is not None:
-            new_norm.bias.data = nn.Parameter(
-                tile_weight(pretrained_norm.bias, new_norm.bias, mode=mode),
-                requires_grad=new_norm.bias.requires_grad,
+            new_norm.bias.data.copy_(
+                tile_weight(pretrained_norm.bias, new_norm.bias, mode=mode)
             )
 
 

@@ -14,18 +14,30 @@ import torch.nn as nn
 from pathlib import Path
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from transformers import TrainingArguments, Trainer, T5Tokenizer, T5EncoderModel, AutoModelForMaskedLM, AutoTokenizer
+from transformers import TrainingArguments, Trainer, T5Tokenizer, T5EncoderModel, set_seed
 from tqdm import tqdm
 #from MPROSTT5_bert import MPROSTT5, CustomTokenizer  # Import the mini ProstT5 model
 import h5py
 from Bio import SeqIO
 from  tqdm import tqdm
 from loguru import logger
+import random
+
+seed = 30
+torch.manual_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
+set_seed(seed)
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 from distill_prostt5.classes.MPROSTT5_bert import MPROSTT5, CustomTokenizer
 from distill_prostt5.classes.datasets import ProteinDataset, PrecomputedProteinDataset, ProteinDatasetNoLogits
 from distill_prostt5.utils.inference import write_predictions, toCPU
 from distill_prostt5.utils.initialisation import  init_large_from_base
+
+
 
 
 log_fmt = (
@@ -442,10 +454,18 @@ def train(
 
         base_model.load_state_dict(state_dict, strict=True)
         base_model = base_model.to("cpu")
+        for name, param in model.state_dict().items():
+            print(name, param)
         model = init_large_from_base(base_model, model)
-        
+        #print(model) 
+        #for name, param in base_model.state_dict().items():
+        #    print(name, param)
+        for name, param in model.state_dict().items():
+            print(name, param)
         # put on gpu
         model = model.to(device)
+
+
 
     # Training arguments
     training_args = TrainingArguments(
