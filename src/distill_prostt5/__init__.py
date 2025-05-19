@@ -339,6 +339,12 @@ LR_SCHEDULER_CHOICES = [
     default=1,
 )
 @click.option(
+    "--warmup_ratio",
+    help="warmup ratio",
+    type=float,
+    default=0.1,
+)
+@click.option(
     "--no_logits",
     help="Only tokenize & randomly crop sequences, do not embed and calculate logits.",
     is_flag=True,
@@ -398,6 +404,7 @@ def train(
     num_heads,
     hidden_size,
     learning_rate,
+    warmup_ratio,
     save_steps,
     logging_eval_steps,
     num_workers,
@@ -481,7 +488,7 @@ def train(
         save_steps=save_steps,     
         logging_steps=logging_eval_steps,
         learning_rate=learning_rate,
-        warmup_ratio=0.1,
+        warmup_ratio=warmup_ratio,
         per_device_train_batch_size=batch_size, # batch size
         gradient_accumulation_steps=1, 
         num_train_epochs=epochs,
