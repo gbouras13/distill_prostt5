@@ -498,6 +498,8 @@ def init_large_from_base(
         tile_linear(pretrained_layer.attn.Wqkv, new_model_layer.attn.Wqkv, linear_type=TileLinear.wqkv, mode=mode)
         # finally, tile the attention output layer
         tile_linear(pretrained_layer.attn.Wo, new_model_layer.attn.Wo, linear_type=TileLinear.default, mode=mode)
+        # attn norm
+        tile_norm(pretrained_layer.attn_norm, new_model_layer.attn_norm, mode=mode)
         # mlp_norm 
         tile_norm(pretrained_layer.mlp_norm, new_model_layer.mlp_norm, mode=mode)
         # mlp.Wi
