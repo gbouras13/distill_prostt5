@@ -402,6 +402,16 @@ LR_SCHEDULER_CHOICES = [
     type=int,
     default=512,
 )
+@click.option(
+    "--restart",
+    help="Restart training from a checkpoint but different training args",
+    is_flag=True,
+)
+@click.option(
+    "--restart_path",
+    help="Restart model path",
+    type=click.Path()
+)
 def train(
     ctx,
     train_path,
@@ -430,6 +440,8 @@ def train(
     base_num_heads,
     base_hidden_size,
     base_intermediate_size,
+    restart,
+    restart_path,
     **kwargs,
 ):
     """Trains distilled Mini ProstT5 model"""
@@ -488,6 +500,21 @@ def train(
         #    print(name, param)
         #for name, param in model.state_dict().items():
         #    print(name, param)
+        # put on gpu
+        model = model.to(device)
+
+    if restart:
+
+        # SLoad weights 
+        state_dict = load_file(f"{restart_path}/model.safetensors")
+
+        # Load into model
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+
+        # (Optional) Print issues
+        print("Missing base model keys:", missing)
+        print("Unexpected base model keys:", unexpected)
+        
         # put on gpu
         model = model.to(device)
 
