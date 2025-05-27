@@ -1,4 +1,4 @@
-#!/usr/bin/mawk -f 
+#!/usr/bin/awk -f 
 BEGIN{OFS="\t";
       print "NAME","SCOP","FAM","SFAM","FOLD","FP","FAMCNT","SFAMCNT","FOLDCNT";
 }

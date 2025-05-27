@@ -596,6 +596,12 @@ def train(
     default=512,
 )
 @click.option(
+    "--intermediate_size",
+    help="Intermediate size size (default to 512)",
+    type=int,
+    default=512,
+)
+@click.option(
     "--mask_threshold",
     help="Mask residues below this confidence threshold - between 0 and 100",
     type=int,
@@ -614,6 +620,7 @@ def infer(
     num_layers,
     num_heads,
     hidden_size,
+    intermediate_size,
     cpu,
     mask_threshold,
     **kwargs,
@@ -665,6 +672,7 @@ def infer(
     # only use swiglu
 
     model = MPROSTT5(hidden_size=hidden_size, num_layers=num_layers,num_heads=num_heads)
+    model = MPROSTT5(hidden_size=hidden_size, intermediate_size=intermediate_size,  num_layers=num_layers, num_heads=num_heads).to('cpu')
     state_dict = load_file(f"{model_ckpt}/model.safetensors")
     model.load_state_dict(state_dict)
     tokenizer = CustomTokenizer()
