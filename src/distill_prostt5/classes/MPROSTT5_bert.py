@@ -70,6 +70,7 @@ def focal_loss(logits, labels,  gamma=2.0, reduction="mean"):
 
     if alpha is not None:
         # alpha should be tensor of shape [num_classes]
+        alpha = alpha.to(labels.device)
         at = alpha[labels]  # pick weight per label
     else:
         at = 1.0
