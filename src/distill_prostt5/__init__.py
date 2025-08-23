@@ -450,11 +450,11 @@ def train(
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # get training dataset
-    train_set = PrecomputedProteinDataset(train_path, no_logits)  # dataset.h5
-    eval_set = PrecomputedProteinDataset(eval_path, no_logits)  # dataset.h5
+    train_set = PrecomputedProteinDataset(train_path)  
+    eval_set = PrecomputedProteinDataset(eval_path)  
 
     # Initialize Mini ProstT5 Model
-    model = MPROSTT5(hidden_size=hidden_size, intermediate_size=intermediate_size,  num_layers=num_layers, num_heads=num_heads, alpha=alpha, activation=activation).to('cpu')
+    model = MPROSTT5(hidden_size=hidden_size, intermediate_size=intermediate_size,  num_layers=num_layers, num_heads=num_heads, alpha=alpha, activation=activation, no_logits=no_logits).to('cpu')
     # Print number of trainable parameters
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     total_params = sum(p.numel() for p in model_parameters)
@@ -474,7 +474,8 @@ def train(
             num_layers=base_num_layers,
             num_heads=base_num_heads,
             alpha=alpha,
-            activation=base_activation
+            activation=base_activation,
+            no_logits=no_logits
         ).to("cpu")
 
         # SLoad weights 

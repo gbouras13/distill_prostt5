@@ -183,13 +183,14 @@ class ProteinDatasetNoLogits(Dataset):
 """
 Define reading dataset once precomputed and merged
 Merging changes the 
+
+Don't need --no_logits as regardless the 4 items returned are the same (target just differs in what it is)
 """
 
 class PrecomputedProteinDataset(Dataset):
-    def __init__(self, hdf5_path, no_logits):
+    def __init__(self, hdf5_path):
         self.hdf5_path = hdf5_path
         self.h5f = h5py.File(self.hdf5_path, "r")
-        self.no_logits = no_logits
 
     def __len__(self):
         return self.h5f['input_ids'].shape[0]

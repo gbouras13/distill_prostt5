@@ -142,12 +142,14 @@ class MPROSTT5(nn.Module):
             intermediate_size=512, # dunno maybe can play with this
             num_heads=8,
             alpha=0.3, # contribution of colabfold Cross Entropy loss 
-            activation='swiglu' # gelu or swiglu
+            activation='swiglu', # gelu or swiglu,
+            no_logits=False # no logits or not
     ):
         super(MPROSTT5, self).__init__()
 
         self.tokenizer = CustomTokenizer()
         self.alpha = alpha
+        self.no_logits = no_logits
 
         # https://huggingface.co/docs/transformers/en/model_doc/modernbert#transformers.ModernBertModel
 
@@ -221,7 +223,7 @@ class MPROSTT5(nn.Module):
             # Compute softmax and log-softmax only on the masked values
             output = F.log_softmax(masked_logits, dim=1)
 
-            if self.alpha < 1:
+            if self.no_logits is False:
 
                 target_probs = F.softmax(masked_target, dim=1)
 
@@ -234,7 +236,7 @@ class MPROSTT5(nn.Module):
             # Combined Loss
             # alpha is the amount of colabfold loss here
 
-            if self.alpha < 1:
+            if self.no_logits is False:
             
                 loss = (1-self.alpha)* kl_loss + self.alpha * ce_loss  # Adjust weight as needed
 
@@ -245,7 +247,7 @@ class MPROSTT5(nn.Module):
             predicted_classes = torch.argmax(masked_logits, dim=1)  
             # print("pred")
             # print(predicted_classes)
-            if self.alpha < 1:
+            if self.no_logits is False:
                 target_classes = torch.argmax(masked_target, dim=1)  
             else:
                 target_classes = masked_target
