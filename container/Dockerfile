@@ -46,7 +46,7 @@ RUN conda clean -af -y
 
 ARG GITHUB_TOKEN
 RUN pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm6.3
-RUN echo test12
+RUN echo test123
 RUN pip install git+https://${GITHUB_TOKEN}@github.com/gbouras13/distill_prostt5.git@main
 RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed before installing the project. "
 RUN distill_prostt5 -h

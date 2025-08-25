@@ -89,9 +89,11 @@ def focal_loss(logits, labels,  gamma=2.0, reduction="mean", no_reweight=False):
         # alpha should be tensor of shape [num_classes]
         alpha = alpha.to(labels.device)
         at = alpha[labels]  # pick weight per label
-        #print(freq_tensor)
-        #print(labels)
-        #print(at)
+        print(freq_tensor)
+        print(labels)
+        print(at)
+        print(logits)
+        print(labels)
     else:
         at = 1.0
 
