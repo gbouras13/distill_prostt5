@@ -59,10 +59,9 @@ def focal_loss(logits, labels,  gamma=2.0, reduction="mean", no_reweight=False):
     }
 
     vocab = {
-            "A": 3, "L": 4, "G": 5, "V": 6, "S": 7, "R": 8, "E": 9, "D": 10,
-            "T": 11, "I": 12, "P": 13, "K": 14, "F": 15, "Q": 16, "N": 17,
-            "Y": 18, "M": 19, "H": 20, "W": 21, "C": 22, "X": 23, "B": 24,
-            "O": 25, "U": 26, "Z": 27, "<pad>": 0, "</s>": 1, "<unk>": 2
+            "A": 0, "C": 1, "D": 2, "E": 3, "F": 4, "G": 5, "H": 6, 
+            "I": 7, "K": 8, "L": 9, "M": 10, "N": 11, "P": 12, "Q": 13, 
+            "R": 14, "S": 15, "T": 16, "V": 17, "W": 18, "Y": 19 
         }
 
     # Build freq tensor aligned to vocab indices
