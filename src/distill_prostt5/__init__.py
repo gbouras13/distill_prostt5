@@ -482,6 +482,7 @@ def train(
                      use_focal=use_focal,
                      gamma=gamma,
                      no_reweight=no_reweight).to('cpu')
+    
     # Print number of trainable parameters
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     total_params = sum(p.numel() for p in model_parameters)

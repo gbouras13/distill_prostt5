@@ -237,6 +237,11 @@ class MPROSTT5(nn.Module):
         self.gamma = gamma
         self.no_reweight = no_reweight
 
+        print(f"--use_focal is {use_focal}")
+        if use_focal:
+            print(f"--gamma is {gamma}")
+            print(f"--no_reweight is {no_reweight}")
+
         # https://huggingface.co/docs/transformers/en/model_doc/modernbert#transformers.ModernBertModel
 
         self.configuration = ModernBertConfig( # these are mostly defaults other than the size and attention heads
