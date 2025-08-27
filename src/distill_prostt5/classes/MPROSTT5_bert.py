@@ -65,12 +65,14 @@ def focal_loss(logits, labels,  gamma=2.0, reduction="mean", no_reweight=False):
         }
 
     # Build freq tensor aligned to vocab indices
-    freq_tensor = torch.ones(len(vocab))  # default weight = 1
-    for aa, idx in vocab.items():
-        if aa in freqs:
-            freq_tensor[idx] = freqs[aa]
-        else:
-            freq_tensor[idx] = 10000.0  # no loss contribution to specials (won't matter anyway)
+    # freq_tensor = torch.ones(len(vocab))  # default weight = 1
+    # for aa, idx in vocab.items():
+    #     if aa in freqs:
+    #         freq_tensor[idx] = freqs[aa]
+    #     else:
+    #         freq_tensor[idx] = 10000.0  # no loss contribution to specials (won't matter anyway)
+
+    # everything is in order anyway, and only 20 output tokens allowed
 
     # Convert to tensor in class index order
     freq_tensor = torch.tensor(list(freqs.values()))
