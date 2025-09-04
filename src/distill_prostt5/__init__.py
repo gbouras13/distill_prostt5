@@ -667,6 +667,17 @@ def train(
             is_flag=True,
             help="Phold output format.",
 )
+@click.option(
+    "--step_down",
+    help="Changes single layer projection (hidden_size, 20) to a 2-layer step down with SWIglu activation and intermediate dimension hidden_size // step_down_ratio ",
+    is_flag=True,
+)
+@click.option(
+    "--step_down_ratio",
+    help="Controls the intermediate dimension in the 2-layer step down intermediate dimension hidden_size // step_down_ratio  ",
+    type=int,
+    default=4,
+)
 def infer(
     ctx,
     input,
@@ -679,6 +690,8 @@ def infer(
     cpu,
     mask_threshold,
     phold,
+    step_down,
+    step_down_ratio,
     **kwargs,
 ):
     """Infers 3Di from input AA FASTA"""
@@ -736,8 +749,7 @@ def infer(
 
     # only use swiglu
 
-    model = MPROSTT5(hidden_size=hidden_size, num_layers=num_layers,num_heads=num_heads)
-    model = MPROSTT5(hidden_size=hidden_size, intermediate_size=intermediate_size,  num_layers=num_layers, num_heads=num_heads).to('cpu')
+    model = MPROSTT5(hidden_size=hidden_size, intermediate_size=intermediate_size,  num_layers=num_layers, num_heads=num_heads, step_down=step_down, step_down_ratio=step_down_ratio)
     state_dict = load_file(f"{model_ckpt}/model.safetensors")
     model.load_state_dict(state_dict)
     tokenizer = CustomTokenizer()
