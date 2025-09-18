@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: distill_prostt5
-Version: 0.3.1
+Version: 0.5.0
 Summary: Distillation Commands for ProstT5
 Author-email: George Bouras <george.bouras@adelaide.edu.au>
 Project-URL: Homepage, https://github.com/gbouras13/distill_prostt5
@@ -79,7 +79,6 @@ distill_prostt5 precompute --no_logits -i tests/test_data/swissprot_subset_aa_50
 python scripts/filter_fastas.py -c 10000clusters.fasta -i fasta/prostT5_dataset.fasta -o prostT5_filt_aa.fasta
 python scripts/filter_fastas.py -c 10000clusters.fasta -i fasta/prostT5_dataset_ss.fasta  -o prostT5_filt_ss.fasta
 
-
 distill_prostt5 precompute --no_logits -i prostT5_filt_aa.fasta -c prostT5_filt_ss.fasta -p prostT5_training.h5
 distill_prostt5 precompute --no_logits -i 10000clusters.fasta -c 10000clusters_ss.fasta -p prostT5_validation.h5
 ```
@@ -101,8 +100,11 @@ distill_prostt5 precompute --no_logits -i 10000clusters.fasta -c 10000clusters_s
 
 ```
 
+### Singletons
 
-
+```bash
+distill_prostt5 precompute --no_logits -i prostt5_dataset_singletons.fasta -c prostt5_dataset_singletons_ss.fasta -p prostT5_singletons.h5
+```
 
 
 
@@ -216,3 +218,50 @@ Options:
                          this)
   --cpu                  Use cpus only.
   ```
+
+
+  # 25 August 2025.  
+
+
+* Updating the container (for focal loss) degraded performance on the original training task
+* Namely, training a 110M param model, I couldn't get the training loss to go below 2.5 (whereas on the old container it was fine)
+
+```bash
+singularity exec distill_prostt5_0.4.1.sif python -c "
+> import torch
+> print('PyTorch version:', torch.__version__)
+> print('CUDA version:', torch.version.cuda)
+> print('ROCm version:', torch.version.hip if hasattr(torch.version, 'hip') else 'N/A')
+> print('Is CUDA available?', torch.cuda.is_available())
+> print('Is ROCm available?', torch.version.hip is not None)
+> print('Available devices:', [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())])
+> "
+PyTorch version: 2.8.0.dev20250517+rocm6.3
+CUDA version: None
+ROCm version: 6.3.42131-fa1d09cbd
+Is CUDA available? False
+Is ROCm available? True
+Available devices: []
+
+singularity exec distill_prostt5_0.5.0.sif python -c "
+> import torch
+> print('PyTorch version:', torch.__version__)
+> print('CUDA version:', torch.version.cuda)
+> print('ROCm version:', torch.version.hip if hasattr(torch.version, 'hip') else 'N/A')
+> print('Is CUDA available?', torch.cuda.is_available())
+> print('Is ROCm available?', torch.version.hip is not None)
+> print('Available devices:', [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())])
+> "
+
+PyTorch version: 2.9.0.dev20250822+rocm6.3
+CUDA version: None
+ROCm version: 6.3.42134-a9a80e791
+Is CUDA available? False
+Is ROCm available? True
+
+
+python distill_prostt5/run.py train -p /mynvme/data/prostT5_training.h5 -e  /mynvme/data/prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 12 -b $BATCH_SIZE --logging_eval_steps 1000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 1000
+
+```
+
+curl -OL https://download.pytorch.org/whl/nightly/cpu/torch-2.1.0.dev20230602%2Bcpu-cp310-cp310-linux_x86_64.whl

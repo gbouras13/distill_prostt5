@@ -274,6 +274,7 @@ class MPROSTT5(nn.Module):
             no_reweight=False, # doesn't reweight classes for focal loss
             step_down=False, # 2 layer stepdown - implemented in v0.5.0
             step_down_ratio=4, # d_mid = hidden_size // step_down_ratio - make sure it is divisible by 4
+            plddt_head_flag=False # plddt head flag
 
     ):
         super(MPROSTT5, self).__init__()
@@ -284,6 +285,7 @@ class MPROSTT5(nn.Module):
         self.use_focal = use_focal
         self.gamma = gamma
         self.no_reweight = no_reweight
+        self.plddt_head_flag = plddt_head_flag
 
         print(f"--use_focal is {use_focal}")
         if use_focal:
@@ -331,6 +333,12 @@ class MPROSTT5(nn.Module):
 
        
         self.model = ModernBertModel(self.configuration)
+
+        if self.plddt_head_flag:
+            for param in self.model.parameters():
+                param.requires_grad = False
+
+        
         # Replace activation function
 
         if activation == 'swiglu':
@@ -349,120 +357,124 @@ class MPROSTT5(nn.Module):
 
         self.kl_loss = nn.KLDivLoss(reduction="batchmean")
 
+        # train plddt head
+        if self.plddt_head_flag:
+            self.plddt_head = nn.Sequential(
+                nn.Linear(hidden_size, hidden_size // 4),
+                nn.ReLU(),
+                nn.Linear(hidden_size // 4, 1)
+            )
+            self.mse_loss = nn.MSELoss(reduction='none')
+
     def forward(self, input_ids=None, labels=None, attention_mask=None, target=None):
         outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
         last_hidden_states = outputs.last_hidden_state 
         logits = self.projection(last_hidden_states)  # projection to ProstT5 size # B  x seq_len x embedding dim (20)
         loss = None
-        if target is not None:
 
-            # Create a mask where labels != -100 - -100 is pad in the colabfold labels
-            mask = (labels != -100)
+        # to train the plddt head
+        
+        if self.plddt_head_flag and target is not None:
+            # Mask out padded residues
+            mask = (labels != -100)  # [B, L]
 
-            # Apply the mask to logits and target before computing loss - mask will not calc loss for padding
-            masked_logits = logits[mask]
+            # Predict pLDDT
+            plddt_logits = self.plddt_head(last_hidden_states)  # [B, L, 1]
+            plddt_pred = torch.sigmoid(plddt_logits).squeeze(-1) * 100.0  # [B, L]
+
+            print(plddt_pred)
+
+            # Mask prediction and target
+            masked_pred = plddt_pred[mask]
             masked_target = target[mask]
-            masked_labels = labels[mask]
 
-            # print(labels)
-            # print(mask)
-            # print(masked_logits)
-
-            # Compute softmax and log-softmax only on the masked values
-            output = F.log_softmax(masked_logits, dim=1)
-
-            if self.no_logits is False:
-
-                target_probs = F.softmax(masked_target, dim=1)
-
-                # Compute KL loss
-                kl_loss = self.kl_loss(output, target_probs)
-
-            if self.use_focal:
-                f_or_ce_loss = focal_loss(masked_logits, masked_labels, gamma=self.gamma, reduction="mean", no_reweight = self.no_reweight)
-            else:
-                # Cross-Entropy Loss
-                f_or_ce_loss = F.cross_entropy(masked_logits, masked_labels, reduction="mean")
-
-
-
+            # Compute loss
+            loss_plddt = self.mse_loss(masked_pred, masked_target).mean()
             
-
-            # Combined Loss
-            # alpha is the amount of colabfold loss here
-
-            if self.no_logits is False:
-            
-                #loss = (1-self.alpha)* kl_loss + self.alpha * ce_loss  # Adjust weight as needed
-                loss = (1-self.alpha)* kl_loss + self.alpha * f_or_ce_loss 
-
-            else:
-                #loss = ce_loss
-                loss = f_or_ce_loss
-
-
-            predicted_classes = torch.argmax(masked_logits, dim=1)  
-            # print("pred")
-            # print(predicted_classes)
-            if self.no_logits is False:
-                target_classes = torch.argmax(masked_target, dim=1)  
-            else:
-                target_classes = masked_target
-
-
-            # print("vanilla")
-            # print(target_classes)
-
-            # print("colabfold")
-            # print(masked_labels)
-            
-            accuracy = (predicted_classes == target_classes).float().mean().item() * 100
-            print(f"mini vs vanilla ProstT5 Accuracy: {accuracy:.2f}%")
-
-            accuracy = (predicted_classes == masked_labels).float().mean().item() * 100
-            print(f"mini vs colabfold Accuracy: {accuracy:.2f}%")
-
-            accuracy = (target_classes == masked_labels).float().mean().item() * 100
-            print(f"vanilla vs colabfold Accuracy: {accuracy:.2f}%")
-
-            # some class balance code - didn't make much of a difference but not 100% sure is correct
-        
-            #  L=−∑logπ(at∣st)Rt
-            # where the reward function Rt is the cosine distance
-            # logπ(at∣st) is the log probability of token a sampled given the state s at step t. 
-
-            # m = torch.distributions.Categorical(logits=masked_logits)
-            # sampled_actions = m.sample()
-            # cosim_reward = cosine_similarity_token_composition(sampled_actions, masked_labels, vocab_size=20)
-            # print("cosine similarity",cosim_reward.mean())
-            # policy_loss = -m.log_prob(sampled_actions) * cosim_reward
-            # policy_loss = policy_loss.mean()
-            # print("cosine reinforce loss", policy_loss)
-
-            # beta = 1 # just try it out
-
-            # loss = (1-alpha)* kl_loss + alpha * ce_loss + beta * policy_loss  # Adjust weight as needed
-
-
-            # cosim_reward = cosine_similarity_token_composition(predicted_classes, masked_labels, vocab_size=28)
-
-            # def cosine_distance_loss(cos_sim):
-            #     return ((1 - cos_sim) ** 2).mean() 
-
-            # cos_loss = cosine_distance_loss(cosim_reward)
-            # # print(cos_loss)
-
-            # beta = 1 # just try it out
-
-            # loss = (1-alpha)* kl_loss + alpha * ce_loss + beta * cos_loss  # Adjust weight as needed
-
-        
-
-        return TokenClassifierOutput(
-            loss=loss,
-            logits=logits,
+            return TokenClassifierOutput(
+            loss=loss_plddt,
+            logits=plddt_pred,
             hidden_states=last_hidden_states
         )
+
+        else:
+
+            if target is not None:
+
+                # Create a mask where labels != -100 - -100 is pad in the colabfold labels
+                mask = (labels != -100)
+
+                # Apply the mask to logits and target before computing loss - mask will not calc loss for padding
+                masked_logits = logits[mask]
+                masked_target = target[mask]
+                masked_labels = labels[mask]
+
+                # print(labels)
+                # print(mask)
+                # print(masked_logits)
+
+                # Compute softmax and log-softmax only on the masked values
+                output = F.log_softmax(masked_logits, dim=1)
+
+                if self.no_logits is False:
+
+                    target_probs = F.softmax(masked_target, dim=1)
+
+                    # Compute KL loss
+                    kl_loss = self.kl_loss(output, target_probs)
+
+                if self.use_focal:
+                    f_or_ce_loss = focal_loss(masked_logits, masked_labels, gamma=self.gamma, reduction="mean", no_reweight = self.no_reweight)
+                else:
+                    # Cross-Entropy Loss
+                    f_or_ce_loss = F.cross_entropy(masked_logits, masked_labels, reduction="mean")
+
+
+                
+
+                # Combined Loss
+                # alpha is the amount of colabfold loss here
+
+                if self.no_logits is False:
+                
+                    #loss = (1-self.alpha)* kl_loss + self.alpha * ce_loss  # Adjust weight as needed
+                    loss = (1-self.alpha)* kl_loss + self.alpha * f_or_ce_loss 
+
+                else:
+                    #loss = ce_loss
+                    loss = f_or_ce_loss
+
+
+                predicted_classes = torch.argmax(masked_logits, dim=1)  
+                # print("pred")
+                # print(predicted_classes)
+                if self.no_logits is False:
+                    target_classes = torch.argmax(masked_target, dim=1)  
+                else:
+                    target_classes = masked_target
+
+
+                # print("vanilla")
+                # print(target_classes)
+
+                # print("colabfold")
+                # print(masked_labels)
+                
+                accuracy = (predicted_classes == target_classes).float().mean().item() * 100
+                print(f"mini vs vanilla ProstT5 Accuracy: {accuracy:.2f}%")
+
+                accuracy = (predicted_classes == masked_labels).float().mean().item() * 100
+                print(f"mini vs colabfold Accuracy: {accuracy:.2f}%")
+
+                accuracy = (target_classes == masked_labels).float().mean().item() * 100
+                print(f"vanilla vs colabfold Accuracy: {accuracy:.2f}%")
+
+
+            return TokenClassifierOutput(
+                loss=loss,
+                logits=logits,
+                hidden_states=last_hidden_states
+            )
 
     def tokenize_input(self, sequences):
         return self.tokenizer(sequences, padding=True, truncation=True, return_tensors="pt")

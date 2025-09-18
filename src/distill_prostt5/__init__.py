@@ -34,7 +34,7 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 from distill_prostt5.classes.MPROSTT5_bert import MPROSTT5, CustomTokenizer
-from distill_prostt5.classes.datasets import ProteinDataset, PrecomputedProteinDataset, ProteinDatasetNoLogits
+from distill_prostt5.classes.datasets import ProteinDataset, PrecomputedProteinDataset, ProteinDatasetNoLogits, ProteinDatasetPlddt, PrecomputedProteinDatasetPlddt
 from distill_prostt5.utils.inference import write_predictions, toCPU, write_probs
 from distill_prostt5.utils.initialisation import  init_large_from_base
 
@@ -868,6 +868,387 @@ def infer(
     write_predictions(predictions, output_3di, mask_threshold)
     write_probs(predictions,output_path_mean)
     
+
+
+
+"""
+precompute_plddt command
+"""
+
+
+@main_cli.command()
+@click.help_option("--help", "-h")
+@click.pass_context
+@click.option(
+    "-i",
+    "--input",
+    help="Path to protein amino acid input file in FASTA format",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "-c",
+    "--colabfold",
+    help="Path to 3Di colabfold input file in FASTA format",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "-p",
+    "--precompute_path",
+    help="Path to output file where you want to save hdf5 embeddings and other data required for the distillation. Use suffix .h5 (for use with merge)",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "--plddt_dir",
+    help="Path to directory where plddt jsons (from AFDB) are stored",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "-m",
+    "--max_length",
+    help="Max length of input (sequences above this length will be truncated to this many characters).",
+    type=int,
+    default=512,
+)
+def precompute_plddt(
+    ctx,
+    input,
+    colabfold,
+    plddt_dir,
+    precompute_path,
+    max_length,
+    **kwargs,
+):
+    """precomputes ProstT5 3Di tokens and pLDDT scores and tokenises input"""
+
+    logger.info("Beginning precomputation of plddt dataset")
+
+    # Loading the BERT Tokenizer
+    bert_tokenizer = CustomTokenizer()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Parse FASTA files
+    aa_records = {record.id: str(record.seq) for record in SeqIO.parse(input, "fasta")}
+    ss_records = {record.id: str(record.seq) for record in SeqIO.parse(colabfold, "fasta")}
+    logger.info(f"Loaded {len(aa_records)} AA sequences from {input}")
+    logger.info(f"Loaded {len(ss_records)} 3Di sequences from {input}")
+
+    # Check if headers match
+    if aa_records.keys() != ss_records.keys():
+        logger.warning("Headers in input and colabfold do not match!")
+        sys.exit()
+    else:
+        logger.info("Headers match successfully.")
+
+    train_set = ProteinDatasetPlddt(aa_records, ss_records, plddt_dir, bert_tokenizer, max_length)
+    train_set.process_and_save(precompute_path) # dataset.h5
+    logger.info(f"Finished processing and randomly cropping sequences for {len(aa_records)} sequences from {input}")
+
+
+    logger.info(f"Saved to {precompute_path}")
+
+
+
+@main_cli.command()
+@click.help_option("--help", "-h")
+@click.pass_context
+@click.option(
+    "-p",
+    "--train_path",
+    help="Path to .h5 file containing training data processed with the precompute-plddt subcommand ",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "-e",
+    "--eval_path",
+    help="Path to .h5 file containing evaluation data processed with the precompute-plddt subcommand ",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "-o",
+    "--output_dir",
+    help="Output directory where checkpoints will be saved ",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "-m",
+    "--model_ckpt",
+    help="Model checkpoint directory (to restart training from here) ",
+    type=click.Path()
+)
+@click.option(
+    "-b",
+    "--batch_size",
+    help="Batch size per device - 192 can fit in MI250 GPU memory",
+    type=int,
+    default=192
+)
+@click.option(
+    "--epochs",
+    help="Epochs",
+    type=int,
+    default=50
+)
+@click.option(
+    "--activation",
+    help="activation type - choose gelu or swiglu, defaults to swiglu",
+    type=str,
+    default='swiglu'
+)
+@click.option(
+    "--num_layers",
+    help="Number of layers (default to 6)",
+    type=int,
+    default=6
+)
+@click.option(
+    "--num_heads",
+    help="Number of attention heads (default to 8)",
+    type=int,
+    default=8,
+)
+@click.option(
+    "--hidden_size",
+    help="Hidden size (default to 512)",
+    type=int,
+    default=512,
+)
+@click.option(
+    "--intermediate_size",
+    help="Intermediate size size (default to 512)",
+    type=int,
+    default=512,
+)
+@click.option(
+    "--learning_rate",
+    help="learning rate (default to 3e-4)",
+    type=float,
+    default=3e-4,
+)
+@click.option(
+    "--save_steps",
+    help="Save checkpoint this many steps (default to 1000)",
+    type=int,
+    default=1000,
+)
+@click.option(
+    "--logging_eval_steps",
+    help="Eval and log at this many steps (default to 25)",
+    type=int,
+    default=25,
+)
+@click.option(
+    "--num_workers",
+    help="Number of workers for dataloader (default to 1)",
+    type=int,
+    default=1,
+)
+@click.option(
+    "--warmup_ratio",
+    help="warmup ratio",
+    type=float,
+    default=0.1,
+)
+@click.option(
+    "--lr_scheduler_type",
+    type=click.Choice(LR_SCHEDULER_CHOICES, case_sensitive=False),
+    default="linear",
+    show_default=True,
+    help="Type of learning rate scheduler to use."
+)
+@click.option(
+    "--frozen_path",
+    help="Frozen model path",
+    type=click.Path()
+)
+@click.option(
+    "--step_down",
+    help="Changes single layer projection (hidden_size, 20) to a 2-layer step down with SWIglu activation and intermediate dimension hidden_size // step_down_ratio ",
+    is_flag=True,
+)
+@click.option(
+    "--step_down_ratio",
+    help="Controls the intermediate dimension in the 2-layer step down intermediate dimension hidden_size // step_down_ratio  ",
+    type=int,
+    default=4,
+)
+@click.option(
+    "-m",
+    "--model_ckpt",
+    help="Model checkpoint directory (to restart training from here) ",
+    type=click.Path()
+)
+def train_plddt(
+    ctx,
+    train_path,
+    eval_path,
+    output_dir,
+    batch_size,
+    epochs,
+    activation,
+    num_layers,
+    num_heads,
+    hidden_size,
+    intermediate_size,
+    learning_rate,
+    warmup_ratio,
+    save_steps,
+    logging_eval_steps,
+    num_workers,
+    lr_scheduler_type,
+    frozen_path,
+    step_down,
+    step_down_ratio,
+    model_ckpt,
+    **kwargs,
+):
+    """Trains distilled Mini ProstT5 model plddt adapter"""
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # get training dataset
+    train_set = PrecomputedProteinDatasetPlddt(train_path)  
+    eval_set = PrecomputedProteinDatasetPlddt(eval_path)  
+
+    # Initialize Mini ProstT5 Model
+    model = MPROSTT5(hidden_size=hidden_size, 
+                     intermediate_size=intermediate_size,  
+                     num_layers=num_layers, 
+                     num_heads=num_heads, 
+                     activation=activation, 
+                     step_down=step_down,
+                     step_down_ratio=step_down_ratio,
+                     plddt_head_flag=True).to('cpu')
+    
+    # Print number of trainable parameters
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    total_params = sum(p.numel() for p in model_parameters)
+    logger.info(f"Mini ProstT5 Total Trainable Parameters: {total_params}")
+
+
+    # Load weights 
+    if frozen_path:
+        state_dict = load_file(f"{frozen_path}/model.safetensors")
+
+        # Load into model
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+
+        # (Optional) Print issues
+        print("Missing base model keys:", missing)
+        print("Unexpected base model keys:", unexpected)
+        
+        # put on gpu
+        model = model.to(device)
+
+
+    # Training arguments
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        save_strategy="steps",
+        logging_strategy="steps",
+        eval_strategy="steps",
+        eval_steps=logging_eval_steps,
+        save_steps=save_steps,     
+        logging_steps=logging_eval_steps,
+        learning_rate=learning_rate,
+        warmup_ratio=warmup_ratio,
+        per_device_train_batch_size=batch_size, # batch size
+        gradient_accumulation_steps=1, 
+        num_train_epochs=epochs,
+        dataloader_num_workers=num_workers, 
+        dataloader_pin_memory=True,  # Optimizes performance on GPU
+        lr_scheduler_type=lr_scheduler_type,
+    )
+
+    # Initialize Trainer
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_set,
+        eval_dataset=eval_set
+    )
+
+    # Train the model
+    if model_ckpt:
+        trainer.train(resume_from_checkpoint=model_ckpt)
+    else:
+        trainer.train()
+    
+
+
+@main_cli.command()
+@click.help_option("--help", "-h")
+@click.pass_context
+@click.option(
+    "-d",
+    "--directory",
+    help="Directory containing hdf5 files created with distill_prostt5 precompute. Suffix MUST be .h5 for all. Will automatically detect and merge all.",
+    type=click.Path(),
+    required=True,
+)
+@click.option(
+    "-p",
+    "--precompute_path",
+    help="Path to output file where you want to save combined hdf5 embeddings and other data required for the distillation",
+    type=click.Path(),
+    required=True,
+)
+def merge(
+    ctx,
+    directory,
+    precompute_path,
+    **kwargs,
+):
+    """merges precomputes embeddings and tokenised input for distillation"""
+
+    # a format change is required to merge and lookup the data efficiently
+    # saving each protein and a group in the hdf5 fdile is very inefficient, and observed it struggles above 2.88 M proteins
+    # It is like making 17M files in a filesystem 
+    # https://stackoverflow.com/questions/35321093/limit-on-number-of-hdf5-datasets
+    # therefore, better to store as 4 datasets (one for input ids, labels, attention mask and target)
+    # with 17M entries - like and array much cheaper to look up
+    # I should have written precompute like this too, but have already computed the 17M embeddings
+    # so will modify PrecomputedProteinDataset instead
+
+    logger.info(f"Finding all .h5 files in {directory} to merge")
+    file_paths = glob.glob(os.path.join(directory, '**', '*.h5'), recursive=True)
+
+    logger.info(f"Found {len(file_paths)} .h5 files in {directory}")
+    logger.info(f"There are {file_paths}")
+    logger.info(f"Starting merging into {precompute_path}")
+
+    total_groups = 0
+    for file_path in file_paths:
+        with h5py.File(file_path, "r") as f:
+            total_groups += len(f.keys())  # Assuming each top-level group represents a dataset entry
+
+    with h5py.File(precompute_path, "w") as merged_file:
+        current_index = 0
+        merged_file.create_dataset('input_ids', (total_groups,), dtype=h5py.special_dtype(vlen=np.int32))
+        merged_file.create_dataset('labels', (total_groups,), dtype=h5py.special_dtype(vlen=np.int32))
+        merged_file.create_dataset('attention_mask', (total_groups,), dtype=h5py.special_dtype(vlen=np.int32))
+        merged_file.create_dataset('target', (total_groups, 512), dtype=h5py.special_dtype(vlen=np.float32))
+
+    # Iterate over each HDF5 file
+        for file_path in file_paths:
+            with h5py.File(file_path, "r") as f:
+            # Iterate over the groups in the current file
+                for group_name in f.keys():
+                    group = f[group_name]
+                # Iterate over the datasets in the group and save them individually
+                    for name, data in group.items():
+                    # Create dataset under the 'proteins' group with unique names
+                        merged_file[name][current_index] = data
+                    current_index += 1
+
+    logger.info(f"Finished merging into {precompute_path}")
+
 
 
 
