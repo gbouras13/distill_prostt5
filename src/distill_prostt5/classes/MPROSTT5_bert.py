@@ -385,9 +385,11 @@ class MPROSTT5(nn.Module):
         last_hidden_states = outputs.last_hidden_state 
         logits = self.projection(last_hidden_states)  # projection to ProstT5 size # B  x seq_len x embedding dim (20)
         loss = None
-        plddt_logits = self.plddt_head(last_hidden_states)  # [B, L, 1]
-        plddt_pred = torch.sigmoid(plddt_logits).squeeze(-1) * 100.0  # [B, L]
-
+        if self.plddt_head_flag:
+            plddt_logits = self.plddt_head(last_hidden_states)  # [B, L, 1]
+            plddt_pred = torch.sigmoid(plddt_logits).squeeze(-1) * 100.0  # [B, L]
+        else:
+            plddt_pred = None
         # to train the plddt head
 
 

@@ -772,8 +772,7 @@ def infer(
     model.to(device)
     model.eval()
 
-    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-    total_params = sum(p.numel() for p in model_parameters)
+    total_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Mini ProstT5 Total Parameters: {total_params}")
 
     predictions = {}
@@ -890,8 +889,7 @@ def infer(
                                 predictions[record_id][identifier] = (
                                     pred,
                                     mean_prob,
-                                    all_prob,
-                                    plddt_slice
+                                    all_prob
                                 )
 
                         
@@ -1167,10 +1165,11 @@ def train_plddt(
                      step_down_ratio=step_down_ratio,
                      plddt_head_flag=True).to('cpu')
     
-    # Print number of trainable parameters
+    # Print number of parameters
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     total_params = sum(p.numel() for p in model_parameters)
-    logger.info(f"Mini ProstT5 Total Trainable Parameters: {total_params}")
+    logger.info(f"Mini ProstT5 Total Parameters: {total_params}")
+    
 
 
     # Load weights 
