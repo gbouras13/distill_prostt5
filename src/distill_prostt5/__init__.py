@@ -807,12 +807,28 @@ def infer(
             #         fail_ids.append(k)
 
 
-
             # Filter out entries that are empty or malformed
             # for logan - some entries are missing sequences (because of the lack of \n I think)
             # e.g
+            # after seqkit
             # grep ERR11457585_70038_2  nonhuman-complete.fa.zst.split/nonhuman-complete.part_016.fa
             # >ERR11457585_70038_2 # 661 # 1926 # 1 # ID=67343_2;partial=00;start_tyDKNDMEKEIGALKKAEDAIYIDSTNMTIEEVVNKVIETIKEKM*
+
+            # zstdcat nonhuman-complete.fa.zst | grep -A10  ERR11457585_70038_2
+
+            # >ERR11457585_70038_2 # 661 # 1926 # 1 # ID=67343_2;partial=00;start_tyDKNDMEKEIGALKKAEDAIYIDSTNMTIEEVVNKVIETIKEKM*
+            #    
+            # >ERR11457585_71594_3 # 1765 # 3144 # -1 # ID=68839_3;partial=00;start_type=ATG;rbs_motif=GGAG/GAGG;rbs_spacer=5-10bp;gc_cont=0.590
+            # MELIRGLKNGMVLQRDMGTNACKITISLRGVQHPQPSLGKLEHLGGERYRLTGIPVGGPYALTLADGTRRLEFADLWVGDVWLLGGQSNMEGWGERGEAELRYDEAPLQKIRAFYLDDHWESARSQLHLPWTNHDTALAEKFLAGRGLTLAQRDCLTLADAGVGPGLFIGQYLCEQSGVPQGLIPCAFGGTCMQDWLPENLTPTSQYRHTLRRFWEIGGNVRGMFWYQGESDLNWLCAAKLHDRMEHMVAAFRKDFDLPELPFVQVQIGRTQGCDDCQLDRIAAWHKIRCLQAEMRFPLFATVSAANATYQDTIHLDTPSQRCIGKAAAMQMCSLLGREELANPVLKHIEIRQTNGHLPTNKTSVVLTYDHVIGELRADGAPSGFSVTLFDEIPYLFPNKLIHHVVLRGNQVEIVTGYSAEQLAHAFVWHGAGPNALCNVHDAEGRALLAMGPMPVCTV*
+            # >ERR11457585_71610_4 # 2018 # 2461 # -1 # ID=68854_4;partial=00;start_type=ATG;rbs_motif=GGAGG;rbs_spacer=5-10bp;gc_cont=0.473
+            # MDNTAYKNRLNAYISHLEQDEKSRATIAQYRRDIICFFEYLGSAELTKEAVLAYKRQLELKYMPVSVNAKLSALNSFFSFAGRADLELKLLKIQKRAYCPAERELSKEEYFRLVKAAGRRRNRPPFADFTDDLRHWNKGFGAEIYYR*
+
+            # zstdcat nonhuman-complete.fa.zst | grep -A10  ERR11457432_144795_1
+            # >ERR11457432_144795_1 # 102 # 575 # -1 # ID=137618_1;partial=00;start_type=ATG;rbs_motif=TAA;rDYIYVNTLKHLIADPVRTSIRWSSSHGDRFRRAGIDWEISQSGFQYAHIQ
+
+            # >ERR11457432_154121_3 # 1749 # 1883 # -1 # ID=146012_3;partial=00;start_type=ATG;rbs_motif=GGAG/GAGG;rbs_spacer=5-10bp;gc_cont=0.467
+            # MEEQQDDFFSPENIAELERRIKRLRSGESKLTERDLINPDDEKD*
+
             valid_seq_dict = {}
             for k, v in seq_dict.items():
                 if v and len(v) > 0 and isinstance(v[0], str):
