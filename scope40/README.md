@@ -14,6 +14,12 @@ conda activate distill_prostt5
 distill_prostt5 infer -i all_scope40_new.fasta -o all_scope_infer -m "../checkpoint-$THRESHOLD/" --num_heads 12 --num_layers 22 --hidden_size 768 --intermediate_size 1152  --plddt_head --mask_threshold 60
 
 
+distill_prostt5 infer -i test.fasta -o blah -m /home/a1667917/a1667917/distill_prostt5/final_models/12_22_90_768_1152_from_scratch_0.1/checkpoint-320784 --num_heads 12 --num_layers 22 --hidden_size 768 --intermediate_size 1152 
+
+
+ --plddt_head --mask_threshold 60
+
+
 distill_prostt5 infer -i all_scope40_new.fasta -o all_scope_infer_25 -m "../checkpoint-$THRESHOLD/" --num_heads 16 --num_layers 24 --hidden_size 960 --mask_threshold 25
 
 # ProstT5 inference

@@ -60,10 +60,10 @@ ARG GITHUB_TOKEN
 RUN echo test13
 # uninstall the v0.4.1 install
 RUN pip uninstall -y distill_prostt5 || true
-RUN echo uninstalling 3
+RUN echo installing 2
 RUN pip install git+https://${GITHUB_TOKEN}@github.com/gbouras13/distill_prostt5.git@main
 RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed before installing the project. "
 RUN distill_prostt5 -h
 RUN distill_prostt5 train -h
-
+RUN distill_prostt5 infer -h
 
