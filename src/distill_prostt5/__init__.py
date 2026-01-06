@@ -691,6 +691,12 @@ def train(
     default=5,
 )
 @click.option(
+    "--max_residues",
+    help="Max residues per batch",
+    type=int,
+    default=50000,
+)
+@click.option(
     "--half",
     help="Use half precision",
     is_flag=True,
@@ -716,6 +722,7 @@ def infer(
     step_down_ratio,
     plddt_head,
     batch_size,
+    max_residues,
     half,
     fast,
     **kwargs,
@@ -803,7 +810,7 @@ def infer(
 
     fail_ids = []
 
-    max_residues = 100000
+    #max_residues = 100000 passed as CLI
     max_seq_len = 100000
 
     if fast:
