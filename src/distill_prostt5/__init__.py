@@ -816,13 +816,13 @@ def infer(
             seq_items = []
             for k, feat in cds_dict[record_id].items():
                 v = feat.qualifiers.get("translation")
-                if v and isinstance(v[0], str):
-                    seq = v[0].replace("U", "X").replace("Z", "X").replace("O", "X")
+                if v and isinstance(v, str):
+                    seq = v.replace("U", "X").replace("Z", "X").replace("O", "X")
                     seq_items.append((k, seq, len(seq)))
                 else:
                     logger.info(f"Protein header {k} is corrupt. It will be saved in fails.tsv")
                     fail_ids.append(k)
-
+            
             # --- keep original order ---
             original_keys = list(seq_record_dict.keys())
             # --- sort once ---
@@ -899,19 +899,19 @@ def infer(
                             all_prob = None
 
                         if plddt_head:
-                            batch_predictions[record_id][pid] = (
+                            batch_predictions[pid] = (
                                 pred,
                                 mean_prob,
                                 all_prob,
                                 plddt[i, :L],
                             )
                         else:
-                            batch_predictions[record_id][pid] = (
+                            batch_predictions[pid] = (
                                 pred,
                                 mean_prob,
                                 all_prob,
                             )
-
+            # reorder to match the original FASTA
             predictions[record_id] = {}
             for k in original_keys:
                 if k in batch_predictions:
