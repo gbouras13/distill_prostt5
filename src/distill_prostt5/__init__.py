@@ -793,6 +793,7 @@ def infer(
     logger.info(f"Mini ProstT5 Total Parameters: {total_params}")
 
     predictions = {}
+    batch_predictions = {}
 
     fail_ids = []
 
@@ -801,7 +802,8 @@ def infer(
 
     # --- build + validate sequences in one pass ---
     for record_id, seq_record_dict in cds_dict.items():
-        predictions[record_id] = {}
+        # predictions[record_id] = {}
+        batch_predictions[record_id] = {}
         seq_items = []
         for k, feat in cds_dict[record_id].items():
             v = feat.qualifiers.get("translation")
@@ -812,6 +814,8 @@ def infer(
                 logger.info(f"Protein header {k} is corrupt. It will be saved in fails.tsv")
                 fail_ids.append(k)
 
+        # --- keep original order ---
+        original_keys = list(seq_record_dict.keys())
         # --- sort once ---
         seq_items.sort(key=lambda x: x[2], reverse=True)
 
@@ -823,6 +827,7 @@ def infer(
             batch.append((pid, seq, slen))
             res_batch += slen
 
+            
 
             if (
                 len(batch) >= batch_size
@@ -855,8 +860,6 @@ def infer(
 
                 # --- predictions (GPU) ---
                 pred_ids = torch.argmax(logits, dim=-1)
-                print(seqs)
-                print(pred_ids)
 
                 # --- probabilities (optional, expensive) ---
                 store_probs = True
@@ -887,18 +890,23 @@ def infer(
                         all_prob = None
 
                     if plddt_head:
-                        predictions[record_id][pid] = (
+                        batch_predictions[record_id][pid] = (
                             pred,
                             mean_prob,
                             all_prob,
                             plddt[i, :L],
                         )
                     else:
-                        predictions[record_id][pid] = (
+                        batch_predictions[record_id][pid] = (
                             pred,
                             mean_prob,
                             all_prob,
                         )
+
+        predictions[record_id] = {}
+        for k in original_keys:
+            if k in batch_predictions:
+                predictions[record_id][k] = batch_predictions[k]
 
     
 
