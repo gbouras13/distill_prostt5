@@ -803,12 +803,12 @@ def infer(
     # --- build + validate sequences in one pass ---
     for record_id, seq_record_dict in cds_dict.items():
         # predictions[record_id] = {}
-        batch_predictions[record_id] = {}
+        batch_predictions = {}
         seq_items = []
         for k, feat in cds_dict[record_id].items():
             v = feat.qualifiers.get("translation")
-            if v and isinstance(v[0], str):
-                seq = v[0].replace("U", "X").replace("Z", "X").replace("O", "X")
+            if v and isinstance(v, str):
+                seq = v.replace("U", "X").replace("Z", "X").replace("O", "X")
                 seq_items.append((k, seq, len(seq)))
             else:
                 logger.info(f"Protein header {k} is corrupt. It will be saved in fails.tsv")
@@ -826,7 +826,6 @@ def infer(
         for idx, (pid, seq, slen) in enumerate(tqdm(seq_items, desc="Processing Sequences"), 1):
             batch.append((pid, seq, slen))
             res_batch += slen
-
             
 
             if (
@@ -890,14 +889,14 @@ def infer(
                         all_prob = None
 
                     if plddt_head:
-                        batch_predictions[record_id][pid] = (
+                        batch_predictions[pid] = (
                             pred,
                             mean_prob,
                             all_prob,
                             plddt[i, :L],
                         )
                     else:
-                        batch_predictions[record_id][pid] = (
+                        batch_predictions[pid] = (
                             pred,
                             mean_prob,
                             all_prob,
