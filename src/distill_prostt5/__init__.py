@@ -787,8 +787,6 @@ def infer(
 
     fail_ids = []
 
-    predictions[record_id] = {}
-
     # --- build + validate sequences in one pass ---
     seq_items = []
     for k, feat in cds_dict[record_id].items():
