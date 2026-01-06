@@ -182,7 +182,24 @@ Options:
 * Try context extension -> 
 
 ```bash
-distill_prostt5 precompute --no_logits -i tests/test_data/phrog_3922_db_aa.fasta -c tests/test_data/phrog_3922_db_ss.fasta  -p test.hdf5 -m 512
-distill_prostt5 precompute --no_logits -i tests/test_data/swissprot_subset_aa_500.fasta -c tests/test_data/swissprot_subset_ss_500.fasta -p swissprot_subset_aa_500.h5
+
+module  load pawseyenv/2023.08
+module load singularity/3.11.4-slurm
+containerImage="distill_prostt5_0.4.1.sif"
+
+singularity exec --rocm  $containerImage distill_prostt5 precompute --help
+
+
+
+python ../distill_prostt5/scripts/extend_dataset_context_length.py -i prostT5_filt_aa.fasta -o prostT5_filt_aa_context_length_extension.fasta -l 768
+
+python ../distill_prostt5/scripts/extend_dataset_context_length.py -i prostT5_filt_ss.fasta -o prostT5_filt_ss_context_length_extension.fasta -l 768
+
+
+
+singularity exec --rocm  $containerImage  distill_prostt5 precompute --no_logits -i prostT5_filt_aa_context_length_extension.fasta -c prostT5_filt_ss_context_length_extension.fasta -p prostT5_training_2048.h5 -m 2048
+
+singularity exec --rocm  $containerImage  distill_prostt5 precompute --no_logits -i 10000clusters.fasta -c 10000clusters_ss.fasta -p prostT5_validation_2048.h5 -m 2048
+
 ```
 

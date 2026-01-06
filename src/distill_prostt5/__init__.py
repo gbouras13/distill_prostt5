@@ -787,6 +787,107 @@ def infer(
 
     fail_ids = []
 
+    predictions[record_id] = {}
+
+    # --- build + validate sequences in one pass ---
+    seq_items = []
+    for k, feat in cds_dict[record_id].items():
+        v = feat.qualifiers.get("translation")
+        if v and isinstance(v[0], str):
+            seq = v[0].replace("U", "X").replace("Z", "X").replace("O", "X")
+            seq_items.append((k, seq, len(seq)))
+        else:
+            logger.info(f"Protein header {k} is corrupt. It will be saved in fails.tsv")
+            fail_ids.append(k)
+
+    # --- sort once ---
+    seq_items.sort(key=lambda x: x[2], reverse=True)
+
+    batch = []
+    res_batch = 0
+
+    # wrap seq_items in tqdm
+    for idx, (pid, seq, slen) in enumerate(tqdm(seq_items, desc="Processing Sequences"), 1):
+        batch.append((pid, seq, slen))
+        res_batch += slen
+
+
+        if (
+            len(batch) >= batch_size
+            or res_batch >= max_residues
+            or slen > max_seq_len
+            or idx == len(seq_items)
+        ):
+            pdb_ids, seqs, seq_lens = zip(*batch)
+            batch.clear()
+            res_batch = 0
+
+            inputs = tokenizer(
+                seqs,
+                add_special_tokens=True,
+                padding=True,
+                return_tensors="pt",
+            )
+            inputs.pop("token_type_ids", None)
+            inputs = {k: v.to(device, non_blocking=True) for k, v in inputs.items()}
+
+            try:
+                with torch.no_grad():
+                    outputs = model(**inputs)
+            except RuntimeError:
+                logger.warning(f"OOM / RuntimeError, ids={pdb_ids}")
+                fail_ids.extend(pdb_ids)
+                continue
+
+            logits = outputs.logits  # [B, L, C]
+
+            # --- predictions (GPU) ---
+            pred_ids = torch.argmax(logits, dim=-1)
+
+            # --- probabilities (optional, expensive) ---
+            store_probs = False
+            if store_probs:
+                probs = torch.softmax(logits, dim=-1).max(dim=-1).values
+
+            # --- plddt ---
+            if plddt_head:
+                plddt = outputs.plddt_pred
+
+            # --- move once to CPU ---
+            pred_ids = pred_ids.cpu().numpy().astype(np.int8)
+            if store_probs:
+                probs = probs.cpu().numpy()
+            if plddt_head:
+                plddt = plddt.cpu().numpy()
+
+            for i, pid in enumerate(pdb_ids):
+                L = seq_lens[i]
+
+                pred = pred_ids[i, :L]
+
+                if store_probs:
+                    mean_prob = round(100 * probs[i, :L].mean(), 2)
+                    all_prob = probs[i, :L]
+                else:
+                    mean_prob = None
+                    all_prob = None
+
+                if plddt_head:
+                    predictions[record_id][pid] = (
+                        pred,
+                        mean_prob,
+                        all_prob,
+                        plddt[i, :L],
+                    )
+                else:
+                    predictions[record_id][pid] = (
+                        pred,
+                        mean_prob,
+                        all_prob,
+                    )
+
+    
+
     # taken from Phold, just for ease, definitely dont need to extra nesting level of the dictionary
     for record_id, cds_records in cds_dict.items():
             # instantiate the nested dict
