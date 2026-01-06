@@ -695,6 +695,11 @@ def train(
     help="Use half precision",
     is_flag=True,
 )
+@click.option(
+    "--fast",
+    help="try fast inference",
+    is_flag=True,
+)
 def infer(
     ctx,
     input,
@@ -712,6 +717,7 @@ def infer(
     plddt_head,
     batch_size,
     half,
+    fast,
     **kwargs,
 ):
     """Infers 3Di from input AA FASTA"""
@@ -800,284 +806,288 @@ def infer(
     max_residues = 100000
     max_seq_len = 100000
 
-    # --- build + validate sequences in one pass ---
-    for record_id, seq_record_dict in cds_dict.items():
-        # predictions[record_id] = {}
-        batch_predictions = {}
-        seq_items = []
-        for k, feat in cds_dict[record_id].items():
-            v = feat.qualifiers.get("translation")
-            if v and isinstance(v, str):
-                seq = v.replace("U", "X").replace("Z", "X").replace("O", "X")
-                seq_items.append((k, seq, len(seq)))
-            else:
-                logger.info(f"Protein header {k} is corrupt. It will be saved in fails.tsv")
-                fail_ids.append(k)
+    if fast:
+    
 
-        # --- keep original order ---
-        original_keys = list(seq_record_dict.keys())
-        # --- sort once ---
-        seq_items.sort(key=lambda x: x[2], reverse=True)
+        # --- build + validate sequences in one pass ---
+        for record_id, seq_record_dict in cds_dict.items():
+            # predictions[record_id] = {}
+            batch_predictions[record_id] = {}
+            seq_items = []
+            for k, feat in cds_dict[record_id].items():
+                v = feat.qualifiers.get("translation")
+                if v and isinstance(v[0], str):
+                    seq = v[0].replace("U", "X").replace("Z", "X").replace("O", "X")
+                    seq_items.append((k, seq, len(seq)))
+                else:
+                    logger.info(f"Protein header {k} is corrupt. It will be saved in fails.tsv")
+                    fail_ids.append(k)
 
-        batch = []
-        res_batch = 0
+            # --- keep original order ---
+            original_keys = list(seq_record_dict.keys())
+            # --- sort once ---
+            seq_items.sort(key=lambda x: x[2], reverse=True)
 
-        # wrap seq_items in tqdm
-        for idx, (pid, seq, slen) in enumerate(tqdm(seq_items, desc="Processing Sequences"), 1):
-            batch.append((pid, seq, slen))
-            res_batch += slen
-            
+            batch = []
+            res_batch = 0
 
-            if (
-                len(batch) >= batch_size
-                or res_batch >= max_residues
-                or slen > max_seq_len
-                or idx == len(seq_items)
-            ):
-                pdb_ids, seqs, seq_lens = zip(*batch)
-                batch.clear()
-                res_batch = 0
+            # wrap seq_items in tqdm
+            for idx, (pid, seq, slen) in enumerate(tqdm(seq_items, desc="Processing Sequences"), 1):
+                batch.append((pid, seq, slen))
+                res_batch += slen
 
-                inputs = tokenizer(
-                    seqs,
-                    add_special_tokens=True,
-                    padding=True,
-                    return_tensors="pt",
-                )
-                inputs.pop("token_type_ids", None)
-                inputs = {k: v.to(device, non_blocking=True) for k, v in inputs.items()}
+                
 
-                try:
-                    with torch.no_grad():
-                        outputs = model(**inputs)
-                except RuntimeError:
-                    logger.warning(f"OOM / RuntimeError, ids={pdb_ids}")
-                    fail_ids.extend(pdb_ids)
-                    continue
+                if (
+                    len(batch) >= batch_size
+                    or res_batch >= max_residues
+                    or slen > max_seq_len
+                    or idx == len(seq_items)
+                ):
+                    pdb_ids, seqs, seq_lens = zip(*batch)
+                    batch.clear()
+                    res_batch = 0
 
-                logits = outputs.logits  # [B, L, C]
+                    inputs = tokenizer(
+                        seqs,
+                        add_special_tokens=True,
+                        padding=True,
+                        return_tensors="pt",
+                    )
+                    inputs.pop("token_type_ids", None)
+                    inputs = {k: v.to(device, non_blocking=True) for k, v in inputs.items()}
 
-                # --- predictions (GPU) ---
-                pred_ids = torch.argmax(logits, dim=-1)
+                    try:
+                        with torch.no_grad():
+                            outputs = model(**inputs)
+                    except RuntimeError:
+                        logger.warning(f"OOM / RuntimeError, ids={pdb_ids}")
+                        fail_ids.extend(pdb_ids)
+                        continue
 
-                # --- probabilities (optional, expensive) ---
-                store_probs = True
-                if store_probs:
-                    probs = torch.softmax(logits, dim=-1).max(dim=-1).values
+                    logits = outputs.logits  # [B, L, C]
 
-                # --- plddt ---
-                if plddt_head:
-                    plddt = outputs.plddt_pred
+                    # --- predictions (GPU) ---
+                    pred_ids = torch.argmax(logits, dim=-1)
 
-                # --- move once to CPU ---
-                pred_ids = pred_ids.cpu().numpy().astype(np.int8)
-                if store_probs:
-                    probs = probs.cpu().numpy()
-                if plddt_head:
-                    plddt = plddt.cpu().numpy()
-
-                for i, pid in enumerate(pdb_ids):
-                    L = seq_lens[i]
-
-                    pred = pred_ids[i, :L]
-
+                    # --- probabilities (optional, expensive) ---
+                    store_probs = True
                     if store_probs:
-                        mean_prob = round(100 * probs[i, :L].mean(), 2)
-                        all_prob = probs[i, :L]
-                    else:
-                        mean_prob = None
-                        all_prob = None
+                        probs = torch.softmax(logits, dim=-1).max(dim=-1).values
 
+                    # --- plddt ---
                     if plddt_head:
-                        batch_predictions[pid] = (
-                            pred,
-                            mean_prob,
-                            all_prob,
-                            plddt[i, :L],
-                        )
+                        plddt = outputs.plddt_pred
+
+                    # --- move once to CPU ---
+                    pred_ids = pred_ids.cpu().numpy().astype(np.int8)
+                    if store_probs:
+                        probs = probs.cpu().numpy()
+                    if plddt_head:
+                        plddt = plddt.cpu().numpy()
+
+                    for i, pid in enumerate(pdb_ids):
+                        L = seq_lens[i]
+
+                        pred = pred_ids[i, :L]
+
+                        if store_probs:
+                            mean_prob = round(100 * probs[i, :L].mean(), 2)
+                            all_prob = probs[i, :L]
+                        else:
+                            mean_prob = None
+                            all_prob = None
+
+                        if plddt_head:
+                            batch_predictions[record_id][pid] = (
+                                pred,
+                                mean_prob,
+                                all_prob,
+                                plddt[i, :L],
+                            )
+                        else:
+                            batch_predictions[record_id][pid] = (
+                                pred,
+                                mean_prob,
+                                all_prob,
+                            )
+
+            predictions[record_id] = {}
+            for k in original_keys:
+                if k in batch_predictions:
+                    predictions[record_id][k] = batch_predictions[k]
+
+    else:
+
+        
+        for record_id, cds_records in cds_dict.items():
+                # instantiate the nested dict
+                predictions[record_id] = {}
+                seq_record_dict = cds_dict[record_id]
+                seq_dict = {}
+
+                # gets the seq_dict with key for id and the translation
+                for key, seq_feature in seq_record_dict.items():
+                    # get the protein seq for normal
+                    seq_dict[key] = seq_feature.qualifiers["translation"]
+
+                # for k, v in seq_dict.items():
+                #     if not v or len(v) == 0:
+                #         logger.info("Empty value for key:", k)
+                #     elif not isinstance(v[0], str):
+                #         logger.info("Unexpected type for key:", k, "->", type(v[0]))
+                #         fail_ids.append(k)
+
+
+                # Filter out entries that are empty or malformed
+                # for logan - some entries are missing sequences (because of the lack of \n I think)
+                # e.g
+                # after seqkit
+                # grep ERR11457585_70038_2  nonhuman-complete.fa.zst.split/nonhuman-complete.part_016.fa
+                # >ERR11457585_70038_2 # 661 # 1926 # 1 # ID=67343_2;partial=00;start_tyDKNDMEKEIGALKKAEDAIYIDSTNMTIEEVVNKVIETIKEKM*
+
+                # zstdcat nonhuman-complete.fa.zst | grep -A10  ERR11457585_70038_2
+
+                # >ERR11457585_70038_2 # 661 # 1926 # 1 # ID=67343_2;partial=00;start_tyDKNDMEKEIGALKKAEDAIYIDSTNMTIEEVVNKVIETIKEKM*
+                #    
+                # >ERR11457585_71594_3 # 1765 # 3144 # -1 # ID=68839_3;partial=00;start_type=ATG;rbs_motif=GGAG/GAGG;rbs_spacer=5-10bp;gc_cont=0.590
+                # MELIRGLKNGMVLQRDMGTNACKITISLRGVQHPQPSLGKLEHLGGERYRLTGIPVGGPYALTLADGTRRLEFADLWVGDVWLLGGQSNMEGWGERGEAELRYDEAPLQKIRAFYLDDHWESARSQLHLPWTNHDTALAEKFLAGRGLTLAQRDCLTLADAGVGPGLFIGQYLCEQSGVPQGLIPCAFGGTCMQDWLPENLTPTSQYRHTLRRFWEIGGNVRGMFWYQGESDLNWLCAAKLHDRMEHMVAAFRKDFDLPELPFVQVQIGRTQGCDDCQLDRIAAWHKIRCLQAEMRFPLFATVSAANATYQDTIHLDTPSQRCIGKAAAMQMCSLLGREELANPVLKHIEIRQTNGHLPTNKTSVVLTYDHVIGELRADGAPSGFSVTLFDEIPYLFPNKLIHHVVLRGNQVEIVTGYSAEQLAHAFVWHGAGPNALCNVHDAEGRALLAMGPMPVCTV*
+                # >ERR11457585_71610_4 # 2018 # 2461 # -1 # ID=68854_4;partial=00;start_type=ATG;rbs_motif=GGAGG;rbs_spacer=5-10bp;gc_cont=0.473
+                # MDNTAYKNRLNAYISHLEQDEKSRATIAQYRRDIICFFEYLGSAELTKEAVLAYKRQLELKYMPVSVNAKLSALNSFFSFAGRADLELKLLKIQKRAYCPAERELSKEEYFRLVKAAGRRRNRPPFADFTDDLRHWNKGFGAEIYYR*
+
+                # zstdcat nonhuman-complete.fa.zst | grep -A10  ERR11457432_144795_1
+                # >ERR11457432_144795_1 # 102 # 575 # -1 # ID=137618_1;partial=00;start_type=ATG;rbs_motif=TAA;rDYIYVNTLKHLIADPVRTSIRWSSSHGDRFRRAGIDWEISQSGFQYAHIQ
+
+                # >ERR11457432_154121_3 # 1749 # 1883 # -1 # ID=146012_3;partial=00;start_type=ATG;rbs_motif=GGAG/GAGG;rbs_spacer=5-10bp;gc_cont=0.467
+                # MEEQQDDFFSPENIAELERRIKRLRSGESKLTERDLINPDDEKD*
+
+                valid_seq_dict = {}
+                for k, v in seq_dict.items():
+                    if v and len(v) > 0 and isinstance(v[0], str):
+                        valid_seq_dict[k] = v
                     else:
-                        batch_predictions[pid] = (
-                            pred,
-                            mean_prob,
-                            all_prob,
-                        )
+                        logger.info(f"Protein header {k} is corrupt. It will be saved in fails.tsv")
+                        fail_ids.append(k)
 
-        predictions[record_id] = {}
-        for k in original_keys:
-            if k in batch_predictions:
-                predictions[record_id][k] = batch_predictions[k]
+                # Sort only the valid ones
+                seq_dict = dict(
+                    sorted(valid_seq_dict.items(), key=lambda kv: len(kv[1][0]), reverse=True)
+                )
 
-    
+                batch = list()
+                max_batch = batch_size
+                max_residues = 100000
+                max_seq_len = 100000
 
-    
-    # for record_id, cds_records in cds_dict.items():
-    #         # instantiate the nested dict
-    #         predictions[record_id] = {}
-    #         seq_record_dict = cds_dict[record_id]
-    #         seq_dict = {}
+                for seq_idx, (pdb_id, seq) in tqdm(enumerate(seq_dict.items(), 1), total=len(seq_dict), desc="Processing Sequences"):
+                    # replace non-standard AAs
+                    seq = seq.replace("U", "X").replace("Z", "X").replace("O", "X")
+                    seq_len = len(seq)
+                    batch.append((pdb_id, seq, seq_len))
 
-    #         # gets the seq_dict with key for id and the translation
-    #         for key, seq_feature in seq_record_dict.items():
-    #             # get the protein seq for normal
-    #             seq_dict[key] = seq_feature.qualifiers["translation"]
+                    # count residues in current batch and add the last sequence length to
+                    # avoid that batches with (n_res_batch > max_residues) get processed
+                    n_res_batch = sum([s_len for _, _, s_len in batch]) + seq_len
+                    if (
+                        len(batch) >= max_batch
+                        or n_res_batch >= max_residues
+                        or seq_idx == len(seq_dict)
+                        or seq_len > max_seq_len
+                    ):
+                        pdb_ids, seqs, seq_lens = zip(*batch)
+                        batch = list()
 
-    #         # for k, v in seq_dict.items():
-    #         #     if not v or len(v) == 0:
-    #         #         logger.info("Empty value for key:", k)
-    #         #     elif not isinstance(v[0], str):
-    #         #         logger.info("Unexpected type for key:", k, "->", type(v[0]))
-    #         #         fail_ids.append(k)
+                        inputs = tokenizer.batch_encode_plus(
+                            seqs,
+                            add_special_tokens=True,
+                            padding="longest",
+                            return_tensors="pt",
+                        ).to(device)
+                        inputs = {k: v for k, v in inputs.items() if k != "token_type_ids"}
+                        #inputs = {k: v for k, v in inputs.items() if k != "token_type_ids"}
+                        inputs = {k: v.to(device) for k, v in inputs.items()}
+                        try:
+                            with torch.no_grad():
+                                outputs = model(**inputs)
+                        except RuntimeError:
+                            logger.warning(f" number of residues in batch {n_res_batch}")
+                            logger.warning(f" seq length is {seq_len}")
+                            logger.warning(f" ids are {pdb_ids}")
+                            logger.warning(
+                                "RuntimeError during embedding for {} (L={})".format(
+                                    pdb_id, seq_len
+                                )
+                            )
+                            for id in pdb_ids:
+                                fail_ids.append(id)
+                            continue
 
+                
+                        try:
+                            logits = outputs.logits
 
-    #         # Filter out entries that are empty or malformed
-    #         # for logan - some entries are missing sequences (because of the lack of \n I think)
-    #         # e.g
-    #         # after seqkit
-    #         # grep ERR11457585_70038_2  nonhuman-complete.fa.zst.split/nonhuman-complete.part_016.fa
-    #         # >ERR11457585_70038_2 # 661 # 1926 # 1 # ID=67343_2;partial=00;start_tyDKNDMEKEIGALKKAEDAIYIDSTNMTIEEVVNKVIETIKEKM*
-
-    #         # zstdcat nonhuman-complete.fa.zst | grep -A10  ERR11457585_70038_2
-
-    #         # >ERR11457585_70038_2 # 661 # 1926 # 1 # ID=67343_2;partial=00;start_tyDKNDMEKEIGALKKAEDAIYIDSTNMTIEEVVNKVIETIKEKM*
-    #         #    
-    #         # >ERR11457585_71594_3 # 1765 # 3144 # -1 # ID=68839_3;partial=00;start_type=ATG;rbs_motif=GGAG/GAGG;rbs_spacer=5-10bp;gc_cont=0.590
-    #         # MELIRGLKNGMVLQRDMGTNACKITISLRGVQHPQPSLGKLEHLGGERYRLTGIPVGGPYALTLADGTRRLEFADLWVGDVWLLGGQSNMEGWGERGEAELRYDEAPLQKIRAFYLDDHWESARSQLHLPWTNHDTALAEKFLAGRGLTLAQRDCLTLADAGVGPGLFIGQYLCEQSGVPQGLIPCAFGGTCMQDWLPENLTPTSQYRHTLRRFWEIGGNVRGMFWYQGESDLNWLCAAKLHDRMEHMVAAFRKDFDLPELPFVQVQIGRTQGCDDCQLDRIAAWHKIRCLQAEMRFPLFATVSAANATYQDTIHLDTPSQRCIGKAAAMQMCSLLGREELANPVLKHIEIRQTNGHLPTNKTSVVLTYDHVIGELRADGAPSGFSVTLFDEIPYLFPNKLIHHVVLRGNQVEIVTGYSAEQLAHAFVWHGAGPNALCNVHDAEGRALLAMGPMPVCTV*
-    #         # >ERR11457585_71610_4 # 2018 # 2461 # -1 # ID=68854_4;partial=00;start_type=ATG;rbs_motif=GGAGG;rbs_spacer=5-10bp;gc_cont=0.473
-    #         # MDNTAYKNRLNAYISHLEQDEKSRATIAQYRRDIICFFEYLGSAELTKEAVLAYKRQLELKYMPVSVNAKLSALNSFFSFAGRADLELKLLKIQKRAYCPAERELSKEEYFRLVKAAGRRRNRPPFADFTDDLRHWNKGFGAEIYYR*
-
-    #         # zstdcat nonhuman-complete.fa.zst | grep -A10  ERR11457432_144795_1
-    #         # >ERR11457432_144795_1 # 102 # 575 # -1 # ID=137618_1;partial=00;start_type=ATG;rbs_motif=TAA;rDYIYVNTLKHLIADPVRTSIRWSSSHGDRFRRAGIDWEISQSGFQYAHIQ
-
-    #         # >ERR11457432_154121_3 # 1749 # 1883 # -1 # ID=146012_3;partial=00;start_type=ATG;rbs_motif=GGAG/GAGG;rbs_spacer=5-10bp;gc_cont=0.467
-    #         # MEEQQDDFFSPENIAELERRIKRLRSGESKLTERDLINPDDEKD*
-
-    #         valid_seq_dict = {}
-    #         for k, v in seq_dict.items():
-    #             if v and len(v) > 0 and isinstance(v[0], str):
-    #                 valid_seq_dict[k] = v
-    #             else:
-    #                 logger.info(f"Protein header {k} is corrupt. It will be saved in fails.tsv")
-    #                 fail_ids.append(k)
-
-    #         # Sort only the valid ones
-    #         seq_dict = dict(
-    #             sorted(valid_seq_dict.items(), key=lambda kv: len(kv[1][0]), reverse=True)
-    #         )
-
-    #         batch = list()
-    #         max_batch = batch_size
-    #         max_residues = 100000
-    #         max_seq_len = 100000
-
-    #         for seq_idx, (pdb_id, seq) in tqdm(enumerate(seq_dict.items(), 1), total=len(seq_dict), desc="Processing Sequences"):
-    #             # replace non-standard AAs
-    #             seq = seq.replace("U", "X").replace("Z", "X").replace("O", "X")
-    #             seq_len = len(seq)
-    #             batch.append((pdb_id, seq, seq_len))
-
-    #             # count residues in current batch and add the last sequence length to
-    #             # avoid that batches with (n_res_batch > max_residues) get processed
-    #             n_res_batch = sum([s_len for _, _, s_len in batch]) + seq_len
-    #             if (
-    #                 len(batch) >= max_batch
-    #                 or n_res_batch >= max_residues
-    #                 or seq_idx == len(seq_dict)
-    #                 or seq_len > max_seq_len
-    #             ):
-    #                 pdb_ids, seqs, seq_lens = zip(*batch)
-    #                 batch = list()
-
-    #                 inputs = tokenizer.batch_encode_plus(
-    #                     seqs,
-    #                     add_special_tokens=True,
-    #                     padding="longest",
-    #                     return_tensors="pt",
-    #                 ).to(device)
-    #                 inputs = {k: v for k, v in inputs.items() if k != "token_type_ids"}
-    #                 #inputs = {k: v for k, v in inputs.items() if k != "token_type_ids"}
-    #                 inputs = {k: v.to(device) for k, v in inputs.items()}
-    #                 try:
-    #                     with torch.no_grad():
-    #                         outputs = model(**inputs)
-    #                 except RuntimeError:
-    #                     logger.warning(f" number of residues in batch {n_res_batch}")
-    #                     logger.warning(f" seq length is {seq_len}")
-    #                     logger.warning(f" ids are {pdb_ids}")
-    #                     logger.warning(
-    #                         "RuntimeError during embedding for {} (L={})".format(
-    #                             pdb_id, seq_len
-    #                         )
-    #                     )
-    #                     for id in pdb_ids:
-    #                         fail_ids.append(id)
-    #                     continue
-
-            
-    #                 try:
-    #                     logits = outputs.logits
-
-    #                     if plddt_head:
-    #                         plddt_pred = outputs.plddt_pred
+                            if plddt_head:
+                                plddt_pred = outputs.plddt_pred
 
 
-    #                     #probabilities = torch.nn.functional.softmax(logits, dim=-1)
-    #                     probabilities = toCPU(
-    #                         torch.max(F.softmax(logits, dim=-1), dim=-1, keepdim=True).values
-    #                     )
-    #                     # batch-size x seq_len x embedding_dim
-    #                     # extra token is added at the end of the seq
-    #                     for batch_idx, identifier in enumerate(pdb_ids):
-    #                         s_len = seq_lens[batch_idx]
+                            #probabilities = torch.nn.functional.softmax(logits, dim=-1)
+                            probabilities = toCPU(
+                                torch.max(F.softmax(logits, dim=-1), dim=-1, keepdim=True).values
+                            )
+                            # batch-size x seq_len x embedding_dim
+                            # extra token is added at the end of the seq
+                            for batch_idx, identifier in enumerate(pdb_ids):
+                                s_len = seq_lens[batch_idx]
 
-    #                          # slice off padding 
-    #                         pred = logits[batch_idx, 0:s_len, :].squeeze()
+                                 # slice off padding 
+                                pred = logits[batch_idx, 0:s_len, :].squeeze()
 
-    #                         pred = toCPU(
-    #                             torch.argmax(pred, dim=1, keepdim=True)
-    #                         ).astype(np.byte)
+                                pred = toCPU(
+                                    torch.argmax(pred, dim=1, keepdim=True)
+                                ).astype(np.byte)
 
-    #                         if plddt_head:
+                                if plddt_head:
 
-    #                             plddt_slice = toCPU(plddt_pred[batch_idx, 0:s_len])
+                                    plddt_slice = toCPU(plddt_pred[batch_idx, 0:s_len])
 
-    #                         # doubles the length of time taken
-    #                         mean_prob = round(100 * probabilities[batch_idx, 0:s_len].mean().item(), 2)
-    #                         all_prob = probabilities[batch_idx, 0:s_len]
+                                # doubles the length of time taken
+                                mean_prob = round(100 * probabilities[batch_idx, 0:s_len].mean().item(), 2)
+                                all_prob = probabilities[batch_idx, 0:s_len]
 
 
-    #                         if plddt_head:
+                                if plddt_head:
+
+                                
+                                
+
+                                    # predictions[record_id][identifier] = pred
+                                    predictions[record_id][identifier] = (
+                                        pred,
+                                        mean_prob,
+                                        all_prob,
+                                        plddt_slice
+                                    )
+                                else:
+                                    # predictions[record_id][identifier] = pred
+                                    predictions[record_id][identifier] = (
+                                        pred,
+                                        mean_prob,
+                                        all_prob
+                                    )
 
                             
+
+                        except IndexError:
+                            logger.warning(
+                                "Index error during prediction for {} (L={})".format(
+                                    pdb_id, seq_len
+                                )
+                            )
+
+                            for id in pdb_ids:
+                                fail_ids.append(id)
                             
-
-    #                             # predictions[record_id][identifier] = pred
-    #                             predictions[record_id][identifier] = (
-    #                                 pred,
-    #                                 mean_prob,
-    #                                 all_prob,
-    #                                 plddt_slice
-    #                             )
-    #                         else:
-    #                             # predictions[record_id][identifier] = pred
-    #                             predictions[record_id][identifier] = (
-    #                                 pred,
-    #                                 mean_prob,
-    #                                 all_prob
-    #                             )
-
-                        
-
-    #                 except IndexError:
-    #                     logger.warning(
-    #                         "Index error during prediction for {} (L={})".format(
-    #                             pdb_id, seq_len
-    #                         )
-    #                     )
-
-    #                     for id in pdb_ids:
-    #                         fail_ids.append(id)
-                        
-    #                     continue
+                            continue
 
 
 
