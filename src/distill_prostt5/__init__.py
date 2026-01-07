@@ -866,8 +866,8 @@ def infer(
             while bs <= max_bs:
                 try:
                     
-                    seqs = (probe_seqs * ((bs // len(probe_seqs)) + 1))[:bs]
-                    n_tokens = sum(len(s) for s in seqs)
+                    # seqs = probe_seqs
+                    n_tokens = sum(len(s) for s in probe_seqs)
 
                     logger.info(f"Running with batch size {bs} and tokens {n_tokens}")
 
@@ -879,8 +879,8 @@ def infer(
 
 
                     # iterate over real sequences in batches
-                    for i in range(0, len(seqs), bs):
-                        batch_seqs = seqs[i : i + bs]
+                    for i in range(0, len(probe_seqs), bs):
+                        batch_seqs = probe_seqs[i : i + bs]
                         n_tokens = sum(len(s) for s in batch_seqs)
                         total_tokens += n_tokens
 
@@ -905,6 +905,7 @@ def infer(
                         torch.cuda.synchronize()
 
                         total_time += time.perf_counter() - t0
+                        
 
                         batches += 1
 
