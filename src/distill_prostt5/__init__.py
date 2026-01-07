@@ -725,6 +725,12 @@ def train(
     type=int,
     default=750,
 )
+@click.option(
+    "--sample_seqs",
+    help="number of seqs to subsample for autobatch",
+    type=int,
+    default=5000,
+)
 def infer(
     ctx,
     input,
@@ -747,6 +753,7 @@ def infer(
     autobatch,
     step,
     max_batch,
+    sample_seqs,
     **kwargs,
 ):
     """Infers 3Di from input AA FASTA"""
@@ -952,7 +959,7 @@ def infer(
 
             return best_bs, best_residues
 
-        probe_seqs = sample_probe_sequences(seqs, n=max_batch)
+        probe_seqs = sample_probe_sequences(seqs, n=sample_seqs)
 
         batch_size, max_residues = autotune_batching_real_data(
             model,
