@@ -826,6 +826,8 @@ def infer(
             if v and isinstance(v, str):
                 seqs.append(v)
 
+        logger.info("Beginning batch size tuning")
+        logger.info(f"Using minimum batch size of 1 and maximum batch size of {max_batch}")
         # define the sampling
 
         def sample_probe_sequences(seqs, n=1000, seed=0):
@@ -857,13 +859,16 @@ def infer(
             last_good = None
 
             bs = start_bs
-            step = 10
+            step = 20
             results = []
 
             while bs <= max_bs:
                 try:
+                    
                     seqs = (probe_seqs * ((bs // len(probe_seqs)) + 1))[:bs]
                     n_tokens = sum(len(s) for s in seqs)
+
+                    logger.info(f"Running with batch size {bs} and tokens {n_tokens}")
 
                     inputs = tokenizer(
                         seqs,
@@ -874,17 +879,17 @@ def infer(
                     inputs = {k: v.to(device) for k, v in inputs.items()}
 
                     # warmup
-                    with torch.no_grad(), torch.cuda.amp.autocast():
-                        _ = model(**inputs)
+                    with torch.no_grad():
+                        outputs = model(**inputs)
                     torch.cuda.synchronize()
 
                     # timing
                     times = []
-                    for _ in range(3):
+                    for _ in range(1): 
                         torch.cuda.synchronize()
                         t0 = time.perf_counter()
-                        with torch.no_grad(), torch.cuda.amp.autocast():
-                            _ = model(**inputs)
+                        with torch.no_grad():
+                            outputs = model(**inputs)
                         torch.cuda.synchronize()
                         times.append(time.perf_counter() - t0)
 
@@ -898,6 +903,8 @@ def infer(
                         "time": elapsed,
                         "time_per_token": tpt,
                     })
+
+                    logger.info(f"Time elapsed {elapsed}")
 
                     bs += step
 
