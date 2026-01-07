@@ -862,6 +862,9 @@ def infer(
             else:
                 sampled = rng.sample(seqs, n)
 
+            # sort by sequence length
+            sampled.sort(key=len, reverse=True)
+
             return sampled
 
         # auto tune
