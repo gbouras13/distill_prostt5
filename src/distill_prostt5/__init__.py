@@ -866,7 +866,7 @@ def infer(
                     # seqs = probe_seqs
                     n_tokens = sum(len(s) for s in probe_seqs)
 
-                    logger.info(f"Running with batch size {bs} and tokens {n_tokens}")
+                    logger.info(f"Running with batch size {bs}")
 
                     model.eval()
 
@@ -930,13 +930,13 @@ def infer(
                     break
 
             
-            if results:
-                best_bs = min(results, key=lambda x: x["time_per_token"])
-            else:
+            if not results:
                 raise RuntimeError("No batch size fits on this GPU")
-            
-            best_bs = best_bs["bs"]
-            best_tokens = best_bs["tokens_per_batch"]
+
+            best_entry = min(results, key=lambda x: x["time_per_token"])
+
+            best_bs = best_entry["bs"]
+            best_tokens = best_entry["tokens"]
             # best_tpt = best_bs["time_per_token"]
 
             return best_bs, best_tokens
