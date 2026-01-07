@@ -3,6 +3,7 @@
 import click
 import os
 import csv
+import time
 import torch
 import numpy as np
 import sys
@@ -813,8 +814,124 @@ def infer(
     #max_residues = 100000 passed as CLI
     max_seq_len = 100000
 
+    autobatch = True
+
+    if autobatch:
+
+        max_batch = 500
+
+        seqs = []
+        for feat in cds_dict["proteins"].values():
+            v = feat.qualifiers.get("translation")
+            if v and isinstance(v, str):
+                seqs.append(v)
+
+        # define the sampling
+
+        def sample_probe_sequences(seqs, n=1000, seed=0):
+            rng = random.Random(seed)
+
+            if n >= len(seqs):
+                sampled = list(seqs)
+            else:
+                sampled = rng.sample(seqs, n)
+
+            return sampled
+
+        # auto tune
+
+        def autotune_batching_real_data(
+            model,
+            tokenizer,
+            device,
+            probe_seqs,
+            start_bs=1,
+            max_bs=max_batch,
+            # safety=0.8,
+            # max_res_cap=100000,
+        ):
+            model.eval()
+            model.half()
+
+            bs = start_bs
+            last_good = None
+
+            bs = start_bs
+            step = 10
+            results = []
+
+            while bs <= max_bs:
+                try:
+                    seqs = (probe_seqs * ((bs // len(probe_seqs)) + 1))[:bs]
+                    n_tokens = sum(len(s) for s in seqs)
+
+                    inputs = tokenizer(
+                        seqs,
+                        padding=True,
+                        return_tensors="pt",
+                    )
+                    inputs.pop("token_type_ids", None)
+                    inputs = {k: v.to(device) for k, v in inputs.items()}
+
+                    # warmup
+                    with torch.no_grad(), torch.cuda.amp.autocast():
+                        _ = model(**inputs)
+                    torch.cuda.synchronize()
+
+                    # timing
+                    times = []
+                    for _ in range(3):
+                        torch.cuda.synchronize()
+                        t0 = time.perf_counter()
+                        with torch.no_grad(), torch.cuda.amp.autocast():
+                            _ = model(**inputs)
+                        torch.cuda.synchronize()
+                        times.append(time.perf_counter() - t0)
+
+                    elapsed = np.median(times)
+                    tpt = elapsed / n_tokens
+
+
+                    results.append({
+                        "bs": bs,
+                        "tokens": n_tokens,
+                        "time": elapsed,
+                        "time_per_token": tpt,
+                    })
+
+                    bs += step
+
+                except torch.cuda.OutOfMemoryError:
+                    torch.cuda.empty_cache()
+                    break
+
+            if last_good is None:
+                raise RuntimeError("Auto-tuning failed even at batch_size=1")
+            
+            if results:
+                best_bs = min(results, key=lambda x: x["time_per_token"])
+            else:
+                raise RuntimeError("No batch size fits on this GPU")
+            
+            best_bs = best_bs["bs"]
+            best_tokens = best_bs["tokens"]
+            # best_tpt = best_bs["time_per_token"]
+
+            return best_bs, best_tokens
+
+        probe_seqs = sample_probe_sequences(seqs, n=max_batch)
+
+        batch_size, max_residues = autotune_batching_real_data(
+            model,
+            tokenizer,
+            device,
+            probe_seqs,
+        )
+
+        logger.info(f"Using batch size {batch_size}")
+        logger.info(f"Using max residues {max_residues}")
+
     if fast:
-    
 
         # --- build + validate sequences in one pass ---
         for record_id, seq_record_dict in cds_dict.items():
