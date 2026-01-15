@@ -88,7 +88,12 @@ def write_predictions(
             
             else:
 
-                for key, (pred, mean_prob, all_prob) in prediction_contig_dict.items():
+                for key, value in prediction_contig_dict.items():
+                    pred = value[0]
+                    mean_prob = value[1] if len(value) > 1 else None
+                    all_prob = value[2] if len(value) > 2 else None
+                    plddt = value[3] if len(value) > 3 else None
+                    
                     all_prob = all_prob * 100
                     # masking with probs
                     for i in range(len(pred)):
