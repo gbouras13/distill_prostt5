@@ -736,7 +736,7 @@ def train(
     "--chunk_len",
     help="chunk length",
     type=int,
-    default=500,
+    default=50000,
 )
 def infer(
     ctx,
