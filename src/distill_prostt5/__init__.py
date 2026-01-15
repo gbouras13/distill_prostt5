@@ -767,9 +767,22 @@ def infer(
     """Infers 3Di from input AA FASTA"""
 
     def chunk_sequence(seq, max_len):
-        """Yield (start, subseq) chunks preserving order."""
-        for start in range(0, len(seq), max_len):
-            yield start, seq[start:start + max_len]
+        """
+        Yield (start, subseq) splitting seq into `max_len` nearly equal chunks.
+        No overlap. Preserves order.
+        """
+        L = len(seq)
+        n_chunks = max_len
+        base = L // n_chunks
+        remainder = L % n_chunks
+
+        start = 0
+        for i in range(n_chunks):
+            # distribute the extra 1 from remainder to the first `remainder` chunks
+            size = base + (1 if i < remainder else 0)
+            end = start + size
+            yield start, seq[start:end]
+            start = end
 
 
     if cpu:
