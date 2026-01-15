@@ -732,6 +732,12 @@ def train(
     type=int,
     default=5000,
 )
+@click.option(
+    "--chunk_len",
+    help="chunk length",
+    type=int,
+    default=500,
+)
 def infer(
     ctx,
     input,
@@ -755,6 +761,7 @@ def infer(
     step,
     max_batch,
     sample_seqs,
+    chunk_len,
     **kwargs,
 ):
     """Infers 3Di from input AA FASTA"""
@@ -983,7 +990,7 @@ def infer(
 
     if fast:
 
-        MAX_CHUNK_LEN = 1024
+        
 
         # --- build + validate sequences in one pass ---
         for record_id, seq_record_dict in cds_dict.items():
@@ -1013,8 +1020,8 @@ def infer(
                 tqdm(seq_items, desc="Processing Sequences"), 1
             ):
 
-                if slen > MAX_CHUNK_LEN:
-                    for chunk_idx, (start, subseq) in enumerate(chunk_sequence(seq, MAX_CHUNK_LEN)):
+                if slen > chunk_len:
+                    for chunk_idx, (start, subseq) in enumerate(chunk_sequence(seq, chunk_len)):
                         chunk_pid = f"{pid}__chunk{chunk_idx}"
                         batch.append((chunk_pid, subseq, len(subseq)))
                         res_batch += len(subseq)
@@ -1082,13 +1089,15 @@ def infer(
 
                             chunk_store[base_id][chunk_idx] = (
                                 pred,
-                                all_prob
+                                all_prob,
+                                plddt[i, :L] if plddt_head else None,
                             )
                         else:
                             batch_predictions[pid_out] = (
                                 pred,
                                 mean_prob,
-                                all_prob
+                                all_prob,
+                                plddt[i, :L] if plddt_head else None,
                             )
 
             # --- recombine chunked sequences ---
