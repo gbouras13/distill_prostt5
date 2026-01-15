@@ -1082,15 +1082,13 @@ def infer(
 
                             chunk_store[base_id][chunk_idx] = (
                                 pred,
-                                all_prob,
-                                plddt[i, :L] if plddt_head else None,
+                                all_prob
                             )
                         else:
                             batch_predictions[pid_out] = (
                                 pred,
                                 mean_prob,
-                                all_prob,
-                                plddt[i, :L] if plddt_head else None,
+                                all_prob
                             )
 
             # --- recombine chunked sequences ---
