@@ -772,7 +772,7 @@ def infer(
         No overlap. Preserves order.
         """
         L = len(seq)
-        n_chunks = max_len
+        n_chunks = math.ceil(L / max_len)
         base = L // n_chunks
         remainder = L % n_chunks
 
