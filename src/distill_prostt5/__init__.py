@@ -1036,11 +1036,6 @@ def infer(
                 if slen > chunk_len:
                     for chunk_idx, (start, subseq) in enumerate(chunk_sequence(seq, chunk_len)):
                         chunk_pid = f"{pid}__chunk{chunk_idx}"
-                        print("chunk")
-                        print(f"{chunk_pid}")
-                        print("subseq")
-                        print(f"{subseq}")
-                        print("fullseq")
                         batch.append((chunk_pid, subseq, len(subseq)))
                         res_batch += len(subseq)
                 else:
