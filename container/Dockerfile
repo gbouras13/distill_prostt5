@@ -48,19 +48,17 @@
 
 
 
-FROM quay.io/gbouras13/distill_prostt5:0.4.1
+# FROM quay.io/gbouras13/distill_prostt5:0.4.1
 
+FROM quay.io/pawsey/pytorch:2.7.1-rocm6.3.3
 
 ARG GITHUB_TOKEN
-# RUN pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/rocm6.3
-
-
-# https://download.pytorch.org/whl/nightly/cpu/torch-2.1.0.dev20230602%2Bcpu-cp310-cp310-linux_x86_64.whl
 
 RUN echo test13
 # uninstall the v0.4.1 install
-RUN pip uninstall -y distill_prostt5 || true
-RUN echo installing 2
+# RUN pip uninstall -y distill_prostt5 || true
+# RUN echo installing 2
+
 RUN pip install git+https://${GITHUB_TOKEN}@github.com/gbouras13/distill_prostt5.git@main
 RUN python3 -c "import torch; print(torch.__version__)" || echo "PyTorch is not installed before installing the project. "
 RUN distill_prostt5 -h

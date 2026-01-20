@@ -485,6 +485,8 @@ def train(
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+   
+
     # get training dataset
     train_set = PrecomputedProteinDataset(train_path)  
     eval_set = PrecomputedProteinDataset(eval_path)  
@@ -738,6 +740,12 @@ def train(
     type=int,
     default=50000,
 )
+@click.option(
+    "--threads",
+    help="number of threads (only for cpu mode)",
+    type=int,
+    default=1,
+)
 def infer(
     ctx,
     input,
@@ -762,6 +770,7 @@ def infer(
     max_batch,
     sample_seqs,
     chunk_len,
+    threads,
     **kwargs,
 ):
     """Infers 3Di from input AA FASTA"""
@@ -784,6 +793,9 @@ def infer(
             yield start, seq[start:end]
             start = end
 
+
+    # used if cpu
+    torch.set_num_threads(threads)
 
     if cpu:
         device = 'cpu'
