@@ -898,11 +898,6 @@ def train(
     is_flag=True,
 )
 @click.option(
-    "--half",
-    help="Run the model in half-precision",
-    is_flag=True,
-)
-@click.option(
     "--batch_size",
     help="Controls inference batchsize  ",
     type=int,
@@ -989,7 +984,6 @@ def infer(
     step_down,
     step_down_ratio,
     plddt_head,
-    half,
     batch_size,
     profile_mmseqs_db,
     task,
@@ -1138,9 +1132,8 @@ def infer(
 
     #max_residues = 100000 passed as CLI
     max_seq_len = 100000
-
+    
     if autobatch:
-
         seqs = []
         for feat in cds_dict["proteins"].values():
             v = feat.qualifiers.get("translation")
@@ -1272,9 +1265,6 @@ def infer(
         logger.info(f"Using max residues {max_residues}")
 
     if fast:
-
-        
-
         # --- build + validate sequences in one pass ---
         for record_id, seq_record_dict in cds_dict.items():
             batch_predictions = {}
@@ -1338,125 +1328,154 @@ def infer(
                         logger.warning(f"OOM / RuntimeError, ids={pdb_ids}")
                         fail_ids.extend(pdb_ids)
                         continue
+                    if task == "classification":
+                        logits = outputs.logits  # [B, L, C]
+                        pred_ids = torch.argmax(logits, dim=-1)
 
-                    logits = outputs.logits  # [B, L, C]
-                    pred_ids = torch.argmax(logits, dim=-1)
-
-                    store_probs = True
-                    if store_probs:
-                        probs = torch.softmax(logits, dim=-1).max(dim=-1).values
-
-                    if plddt_head:
-                        plddt = outputs.plddt_pred
-
-                    pred_ids = pred_ids.cpu().numpy().astype(np.int8)
-                    if store_probs:
-                        probs = probs.cpu().numpy()
-                    if plddt_head:
-                        plddt = plddt.cpu().numpy()
-
-                    for i, pid_out in enumerate(pdb_ids):
-                        L = seq_lens[i]
-                        pred = pred_ids[i, :L]
-
+                        store_probs = True
                         if store_probs:
-                            mean_prob = round(100 * probs[i, :L].mean(), 2)
-                            all_prob = probs[i, :L]
-                        else:
-                            mean_prob = None
-                            all_prob = None
+                            probs = torch.softmax(logits, dim=-1).max(dim=-1).values
 
-                        if "__chunk" in pid_out:
-                            base_id, chunk_tag = pid_out.split("__chunk")
-                            chunk_idx = int(chunk_tag)
+                        if plddt_head:
+                            plddt = outputs.plddt_pred
 
+                        pred_ids = pred_ids.cpu().numpy().astype(np.int8)
+                        if store_probs:
+                            probs = probs.cpu().numpy()
+                        if plddt_head:
+                            plddt = plddt.cpu().numpy()
 
-                            if plddt_head:
-                                chunk_store[base_id][chunk_idx] = (
-                                    pred,
-                                    all_prob,
-                                    plddt[i, :L] if plddt_head else None,
-                                )
+                        for i, pid_out in enumerate(pdb_ids):
+                            L = seq_lens[i]
+                            pred = pred_ids[i, :L]
+
+                            if store_probs:
+                                mean_prob = round(100 * probs[i, :L].mean(), 2)
+                                all_prob = probs[i, :L]
                             else:
+                                mean_prob = None
+                                all_prob = None
 
-                                chunk_store[base_id][chunk_idx] = (
-                                    pred,
-                                    all_prob)
+                            if "__chunk" in pid_out:
+                                base_id, chunk_tag = pid_out.split("__chunk")
+                                chunk_idx = int(chunk_tag)
 
-                        else:
-                            if plddt_head:
-                                batch_predictions[pid_out] = (
-                                    pred,
-                                    mean_prob,
-                                    all_prob,
-                                    plddt[i, :L] 
-                                )
+
+                                if plddt_head:
+                                    chunk_store[base_id][chunk_idx] = (
+                                        pred,
+                                        all_prob,
+                                        plddt[i, :L] if plddt_head else None,
+                                    )
+                                else:
+
+                                    chunk_store[base_id][chunk_idx] = (
+                                        pred,
+                                        all_prob)
+
                             else:
-                                batch_predictions[pid_out] = (
-                                    pred,
-                                    mean_prob,
-                                    all_prob
-                                )
-
-
-            # --- recombine chunked sequences ---
-            for pid, chunks in chunk_store.items():
-                preds = []
-                probs_all = []
-                plddts = []
-
-                for idx in sorted(chunks):
-
-                    if plddt_head:
-
-                        pred, prob, plddt = chunks[idx]
+                                if plddt_head:
+                                    batch_predictions[pid_out] = (
+                                        pred,
+                                        mean_prob,
+                                        all_prob,
+                                        plddt[i, :L] 
+                                    )
+                                else:
+                                    batch_predictions[pid_out] = (
+                                        pred,
+                                        mean_prob,
+                                        all_prob
+                                    )
                     else:
-                        pred, prob = chunks[idx]
+                        probs = outputs.logits.cpu().numpy()  # [B, L, 20]
+                        if pssm_db_builder is not None:
+                            # --- Direct binary Foldseek profile_ss DB build ---
+                            lookup = pssm_db_builder["lookup"]
+                            parts = pssm_db_builder["parts"]
+                            index_lines = pssm_db_builder["index_lines"]
+                            offset = pssm_db_builder["offset"]
+
+                            for batch_idx, identifier in enumerate(pdb_ids):
+                                L = seq_lens[batch_idx]
+                                mat = probs[batch_idx, :L, :]       # (L, 20)
+
+                                logPSSM, consensus = computeLogPSSM(mat)
+                                key = lookup[identifier]            # mmseqs numeric id
+
+                                buf = toBuffer_pssm(logPSSM, consensus)
+                                buf_length = len(buf)
+
+                                parts.append(buf)
+                                index_lines.append(f"{key}\t{offset}\t{buf_length}")
+                                offset += buf_length
+
+                            # update offset back into builder
+                            pssm_db_builder["offset"] = offset
+                        else:
+                            with output_3di.open("a") as fh:
+                                for batch_idx, identifier in enumerate(pdb_ids):
+                                    L = seq_lens[batch_idx]
+                                    print(f"Query profile of sequence {identifier}", file=fh)
+                                    print(fmt_profile(probs[batch_idx, :L, :]), file=fh)
+                                    print("", file=fh)
+
+                if task == "classification":
+                    # --- recombine chunked sequences ---
+                    for pid, chunks in chunk_store.items():
+                        preds = []
+                        probs_all = []
+                        plddts = []
+
+                        for idx in sorted(chunks):
+
+                            if plddt_head:
+
+                                pred, prob, plddt = chunks[idx]
+                            else:
+                                pred, prob = chunks[idx]
 
 
-                    preds.append(pred)
-                    if prob is not None:
-                        probs_all.append(prob)
-                    if plddt_head:
-                        plddts.append(plddt)
+                            preds.append(pred)
+                            if prob is not None:
+                                probs_all.append(prob)
+                            if plddt_head:
+                                plddts.append(plddt)
 
-                if plddt_head:
-                    plddt_full = np.concatenate(plddts)
+                        if plddt_head:
+                            plddt_full = np.concatenate(plddts)
 
-                pred_full = np.concatenate(preds)
+                        pred_full = np.concatenate(preds)
 
-                if probs_all:
-                    probs_full = np.concatenate(probs_all)
-                    mean_prob = round(100 * probs_full.mean(), 2)
-                else:
-                    probs_full = None
-                    mean_prob = None
+                        if probs_all:
+                            probs_full = np.concatenate(probs_all)
+                            mean_prob = round(100 * probs_full.mean(), 2)
+                        else:
+                            probs_full = None
+                            mean_prob = None
 
-                if plddt_head:
-                    plddt_full = np.concatenate(plddts)
-                    batch_predictions[pid] = (
-                        pred_full,
-                        mean_prob,
-                        probs_full,
-                        plddt_full,
-                    )
-                else:
-                    batch_predictions[pid] = (
-                        pred_full,
-                        mean_prob,
-                        probs_full,
-                    )
+                        if plddt_head:
+                            plddt_full = np.concatenate(plddts)
+                            batch_predictions[pid] = (
+                                pred_full,
+                                mean_prob,
+                                probs_full,
+                                plddt_full,
+                            )
+                        else:
+                            batch_predictions[pid] = (
+                                pred_full,
+                                mean_prob,
+                                probs_full,
+                            )
 
-            # --- reorder to match original FASTA ---
-            predictions[record_id] = {}
-            for k in original_keys:
-                if k in batch_predictions:
-                    predictions[record_id][k] = batch_predictions[k]
-
-
+                    # --- reorder to match original FASTA ---
+                    predictions[record_id] = {}
+                    for k in original_keys:
+                        if k in batch_predictions:
+                            predictions[record_id][k] = batch_predictions[k]
+            
     else:
-
-        
         for record_id, cds_records in cds_dict.items():
                 # instantiate the nested dict
                 predictions[record_id] = {}
@@ -1531,6 +1550,8 @@ def infer(
                         or seq_idx == len(seq_dict)
                         or seq_len > max_seq_len
                     ):
+                        # print("SLOW MODE")
+                        # exit()                        
                         pdb_ids, seqs, seq_lens = zip(*batch)
                         batch = list()
 
@@ -1559,105 +1580,94 @@ def infer(
                                 fail_ids.append(id)
                             continue
                     
-                    if task == "pssm":
-                        probs = outputs.logits.cpu().numpy()  # [B, L, 20]
-                        if pssm_db_builder is not None:
-                            # --- Direct binary Foldseek profile_ss DB build ---
-                            lookup = pssm_db_builder["lookup"]
-                            parts = pssm_db_builder["parts"]
-                            index_lines = pssm_db_builder["index_lines"]
-                            offset = pssm_db_builder["offset"]
-
-                            for batch_idx, identifier in enumerate(pdb_ids):
-                                L = seq_lens[batch_idx]
-                                mat = probs[batch_idx, :L, :]       # (L, 20)
-
-                                logPSSM, consensus = computeLogPSSM(mat)
-                                key = lookup[identifier]            # mmseqs numeric id
-
-                                buf = toBuffer_pssm(logPSSM, consensus)
-                                buf_length = len(buf)
-
-                                parts.append(buf)
-                                index_lines.append(f"{key}\t{offset}\t{buf_length}")
-                                offset += buf_length
-
-                            # update offset back into builder
-                            pssm_db_builder["offset"] = offset
-                        else:
-                            # --- Fallback: old TSV output (single open) ---
-                            with output_3di.open("a") as fh:
-                                for batch_idx, identifier in enumerate(pdb_ids):
-                                    L = seq_lens[batch_idx]
-                                    print(f"Query profile of sequence {identifier}", file=fh)
-                                    print(fmt_profile(probs[batch_idx, :L, :]), file=fh)
-                                    print("", file=fh)
-
-                        continue
                     
-
-                
                         try:
-                            logits = outputs.logits
-
-                            if plddt_head:
-                                plddt_pred = outputs.plddt_pred
-
-
-                            #probabilities = torch.nn.functional.softmax(logits, dim=-1)
-                            probabilities = toCPU(
-                                torch.max(F.softmax(logits, dim=-1), dim=-1, keepdim=True).values
-                            )
-                            # batch-size x seq_len x embedding_dim
-                            # extra token is added at the end of the seq
-                            for batch_idx, identifier in enumerate(pdb_ids):
-                                s_len = seq_lens[batch_idx]
-
-                                 # slice off padding 
-                                pred = logits[batch_idx, 0:s_len, :].squeeze()
-
-                                pred = toCPU(
-                                    torch.argmax(pred, dim=1, keepdim=True)
-                                ).astype(np.byte)
+                            if task == "classification":
+                                logits = outputs.logits
 
                                 if plddt_head:
-
-                                    plddt_slice = toCPU(plddt_pred[batch_idx, 0:s_len])
-
-                                # doubles the length of time taken
-                                mean_prob = round(100 * probabilities[batch_idx, 0:s_len].mean().item(), 2)
-                                all_prob = probabilities[batch_idx, 0:s_len]
+                                    plddt_pred = outputs.plddt_pred
 
 
-                                if plddt_head:
+                                #probabilities = torch.nn.functional.softmax(logits, dim=-1)
+                                probabilities = toCPU(
+                                    torch.max(F.softmax(logits, dim=-1), dim=-1, keepdim=True).values
+                                )
+                                # batch-size x seq_len x embedding_dim
+                                # extra token is added at the end of the seq
+                                for batch_idx, identifier in enumerate(pdb_ids):
+                                    s_len = seq_lens[batch_idx]
 
-                                
-                                
+                                    # slice off padding 
+                                    pred = logits[batch_idx, 0:s_len, :].squeeze()
 
-                                    # predictions[record_id][identifier] = pred
-                                    predictions[record_id][identifier] = (
-                                        pred,
-                                        mean_prob,
-                                        all_prob,
-                                        plddt_slice
-                                    )
+                                    pred = toCPU(
+                                        torch.argmax(pred, dim=1, keepdim=True)
+                                    ).astype(np.byte)
+
+                                    if plddt_head:
+
+                                        plddt_slice = toCPU(plddt_pred[batch_idx, 0:s_len])
+
+                                    # doubles the length of time taken
+                                    mean_prob = round(100 * probabilities[batch_idx, 0:s_len].mean().item(), 2)
+                                    all_prob = probabilities[batch_idx, 0:s_len]
+
+                                    if plddt_head:
+                                        # predictions[record_id][identifier] = pred
+                                        predictions[record_id][identifier] = (
+                                            pred,
+                                            mean_prob,
+                                            all_prob,
+                                            plddt_slice
+                                        )
+                                    else:
+                                        # predictions[record_id][identifier] = pred
+                                        predictions[record_id][identifier] = (
+                                            pred,
+                                            mean_prob,
+                                            all_prob
+                                        )
+                            else:
+                                probs = outputs.logits.cpu().numpy()  # [B, L, 20]
+                                if pssm_db_builder is not None:
+                                    # --- Direct binary Foldseek profile_ss DB build ---
+                                    lookup = pssm_db_builder["lookup"]
+                                    parts = pssm_db_builder["parts"]
+                                    index_lines = pssm_db_builder["index_lines"]
+                                    offset = pssm_db_builder["offset"]
+
+                                    for batch_idx, identifier in enumerate(pdb_ids):
+                                        L = seq_lens[batch_idx]
+                                        mat = probs[batch_idx, :L, :]       # (L, 20)
+
+                                        logPSSM, consensus = computeLogPSSM(mat)
+                                        key = lookup[identifier]            # mmseqs numeric id
+
+                                        buf = toBuffer_pssm(logPSSM, consensus)
+                                        buf_length = len(buf)
+
+                                        parts.append(buf)
+                                        index_lines.append(f"{key}\t{offset}\t{buf_length}")
+                                        offset += buf_length
+
+                                    # update offset back into builder
+                                    pssm_db_builder["offset"] = offset
                                 else:
-                                    # predictions[record_id][identifier] = pred
-                                    predictions[record_id][identifier] = (
-                                        pred,
-                                        mean_prob,
-                                        all_prob
-                                    )
-
+                                    # --- Fallback: old TSV output (single open) ---
+                                    with output_3di.open("a") as fh:
+                                        for batch_idx, identifier in enumerate(pdb_ids):
+                                            L = seq_lens[batch_idx]
+                                            print(f"Query profile of sequence {identifier}", file=fh)
+                                            print(fmt_profile(probs[batch_idx, :L, :]), file=fh)
+                                            print("", file=fh)
                             
-
                         except IndexError:
                             logger.warning(
                                 "Index error during prediction for {} (L={})".format(
                                     pdb_id, seq_len
                                 )
                             )
-
                             for id in pdb_ids:
                                 fail_ids.append(id)
                             
@@ -1679,8 +1689,8 @@ def infer(
 
     if task == "pssm" and pssm_db_builder is not None:
         db_buffer = b"".join(pssm_db_builder["parts"])
-        pssm_output_db = pssm_db_builder["output_db"]      # e.g. BASE_profile_ss
-        pssm_index = pssm_db_builder["index_file"]         # e.g. BASE_profile_ss.index
+        pssm_output_db = pssm_db_builder["output_db"]      
+        pssm_index = pssm_db_builder["index_file"]         
 
         # Single write for PSSM DB
         with open(pssm_output_db, "wb") as f:
