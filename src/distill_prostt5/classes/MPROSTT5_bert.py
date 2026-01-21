@@ -487,6 +487,48 @@ class MPROSTT5(nn.Module):
     def tokenize_input(self, sequences):
         return self.tokenizer(sequences, padding=True, truncation=True, return_tensors="pt")
 
+class MPROSTT5_PSSM(nn.Module):
+    def __init__(self, hidden_size=512, intermediate_size=512, num_layers=6, num_heads=8, activation='swiglu'):
+        super().__init__()
+        self.config = ModernBertConfig(
+            vocab_size=28,
+            hidden_size=hidden_size,
+            intermediate_size=intermediate_size,
+            num_hidden_layers=num_layers,
+            num_attention_heads=num_heads,
+            hidden_activation='gelu',
+            pad_token_id=0,
+        )
+        self.model = ModernBertModel(self.config)
+        if activation == 'swiglu':
+            for layer in self.model.layers:
+                layer.mlp = ModernBertMLPSwiGLU(self.config)
+        self.projection = nn.Linear(hidden_size, 20, bias=False)
+        self.kl_loss = nn.KLDivLoss(reduction="batchmean")
+
+    def forward(self, input_ids=None, attention_mask=None, labels=None):
+        output = self.model(input_ids=input_ids, attention_mask=attention_mask)
+        hidden = output.last_hidden_state
+        logits = torch.softmax(self.projection(hidden), dim=2)  # shape (B, L, 20)
+        if labels is not None:
+            pred = logits.flatten(end_dim = 1)
+            target = labels.flatten(end_dim = 1)
+            
+            pred_mask = attention_mask.flatten(end_dim=1)
+            target_mask = ~torch.any(target == -100, dim=1)
+            
+            pred = pred[pred_mask.bool()]
+            target = target[target_mask.bool()]
+            loss = self.kl_loss(torch.log(pred), target)
+        else:
+            loss = None
+
+        return TokenClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=hidden
+        )
+
 """
 These are the 3Di tokens corresponding to the predicted classes (by the CNN)
 

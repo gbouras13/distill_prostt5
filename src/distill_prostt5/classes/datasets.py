@@ -14,7 +14,7 @@ from random import randint
 import os
 import json
 import sys
-
+from distill_prostt5.classes.MPROSTT5_bert import CustomTokenizer
 """
 pads plddt to max length and converts to torch tensor
 """
@@ -56,6 +56,45 @@ def process_amino_acid_sequence(seq: str, max_length=int):
     # Convert to torch tensor
     return torch.tensor(mapped_seq, dtype=torch.long).unsqueeze(0)
 
+AA_ORDER = ("A C D E F G H I K L M N P Q R S T V W Y").split()
+
+def fmt_profile(probs):
+    if probs.ndim != 2 or probs.shape[1] != 20:
+        raise ValueError(f"Expected shape (L, 20), got {probs.shape}")
+    lines = ["     " + "  ".join(f"{aa:>5}" for aa in AA_ORDER)]
+    for row in probs:
+        lines.append(" ".join(f"{p:0.4f}" for p in row))
+    return "\n".join(lines)
+
+
+def pssm_collate_fn(batch, pad_to_length=512):
+    input_ids = [x["input_ids"] for x in batch]
+    attention_mask = [x["attention_mask"] for x in batch]
+    labels = [x["labels"] for x in batch]
+    input_ids = torch.stack(input_ids)
+    attention_mask = torch.stack(attention_mask)
+    # lengths = [t.shape[0] for t in input_ids]
+    # pad_to_length = min(pad_to_length, max(lengths))
+    # Pad labels to fixed length (512) along dim=0
+    labels_padded = []
+    for label in labels:
+        L, C = label.shape
+        if L < pad_to_length:
+            padding = torch.full((pad_to_length - L, C), -100.0, dtype=label.dtype, device=label.device)
+            padded = torch.cat([label, padding], dim=0)
+        else:
+            padded = label[:pad_to_length]  # truncate if necessary
+        labels_padded.append(padded)
+
+    labels = torch.stack(labels_padded)
+    # print(input_ids, input_ids.shape)
+    # print(labels, labels.shape)
+    # exit()
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "labels": labels
+    }
 
 class ProteinDataset(Dataset):
     def __init__(self, aa_records, ss_records, prost_model, prost_tokenizer,bert_tokenizer, cnn_checkpoint, max_length):
@@ -333,9 +372,60 @@ class ProteinDatasetPlddt(Dataset):
 
         print(f"Dataset saved to {save_path}")   
 
+class ProteinPSSMDataset(Dataset):
+    def __init__(self, file_path: str, tokenizer: CustomTokenizer, max_len=512):
+        
+        self.tokenizer = tokenizer
+        self.max_len = max_len
 
+        self._pro = np.memmap(file_path + ".profiles.bin", mode="r", dtype=np.float32)
+        self._seq = np.memmap(file_path + ".seqs.bin", mode="r", dtype=np.uint8)
+        # load metadata
+        with open(file_path + ".profiles.idx") as f:
+            self.entries = [json.loads(line) for line in f]
 
+    def __len__(self):
+        return len(self.entries)
 
+    def __getitem__(self, idx):
+        entry = self.entries[idx]
+        L, C = entry["length"], entry["width"]
+        p_off = entry["pro_off"] // 4
+        profile = torch.tensor(self._pro[p_off:p_off + L*C].reshape(L, C), dtype=torch.float32)
+
+        seq = bytes(self._seq[entry["seq_off"]:entry["seq_off"] + entry["seq_len"]]).decode()
+        tokenized = self.tokenizer(seq, return_tensors="pt", padding="max_length", truncation=True, add_special_tokens=False, max_length=self.max_len)
+        input_ids = tokenized["input_ids"].squeeze(0)
+
+        attention_mask = tokenized["attention_mask"].squeeze(0)
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": profile
+        }
+
+class PrecomputedProteinPSSMDataset(Dataset):
+    def __init__(self, h5_path: str):
+        self.h5_path = h5_path
+        self._h5 = None
+        with h5py.File(h5_path, "r") as f:
+            self.N = f["input_ids"].shape[0]
+
+    def _ensure_open(self):
+        if self._h5 is None:
+            self._h5 = h5py.File(self.h5_path, "r")
+
+    def __len__(self):
+        return self.N
+
+    def __getitem__(self, idx):
+        self._ensure_open()
+        return {
+            "input_ids": torch.from_numpy(self._h5["input_ids"][idx]).long(),
+            "attention_mask": torch.from_numpy(self._h5["attention_mask"][idx]).long(),
+            "labels": torch.from_numpy(self._h5["labels"][idx]).float(),
+        }
+        
 class PrecomputedProteinDatasetPlddt(Dataset):
     def __init__(self, hdf5_path):
         self.hdf5_path = hdf5_path
