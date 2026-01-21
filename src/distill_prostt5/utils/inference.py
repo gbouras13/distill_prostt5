@@ -256,7 +256,7 @@ backprobs = [0.0489372, 0.0306991, 0.101049, 0.0329671, 0.0276149,
              0.0150238, 0.0215826, 0.0783843, 0.0512926, 0.0264886,
              0.0610702, 0.0201311, 0.215998, 0.0310265, 0.0295417,
              0.00001]
-backprobs = np.asarray(backprobs, dtype=np.float32)
+backprobs = np.asarray(backprobs, dtype=np.float32)[:20] # done need X
 bitFactor = 8
 
 def parse_profile_from_block(block_lines):
