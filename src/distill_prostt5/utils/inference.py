@@ -551,7 +551,7 @@ def precompute_sub_blocks(sub_matrix):
         idx = AA_TO_INDEX[aa]
 
         block = bytearray(25)
-        block[0:20] = scaled.view(np.uint8) 
+        block[0:20] = scaled.view(np.uint8).tobytes()
         block[20] = idx
         block[21] = idx
         block[22] = 0
