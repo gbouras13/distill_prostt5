@@ -505,11 +505,16 @@ def parse_substitution_matrix_seq(matrix_str):
 #         profile.append(np.int8(0))
 #     return profile
 
+# def pack_profile_seq(profile):
+#     parts = []
+#     for val in profile:
+#         parts.append(struct.pack('b', val))
+#     return b"".join(parts)
+
 def pack_profile_seq(profile):
-    parts = []
-    for val in profile:
-        parts.append(struct.pack('b', val))
-    return b"".join(parts)
+    # vectorised
+    profile = np.asarray(profile, dtype=np.int8)
+    return profile.tobytes()
 
 def read_sequences(seq_db_file, seq_index_file):
     with open(seq_db_file, "rb") as f:
