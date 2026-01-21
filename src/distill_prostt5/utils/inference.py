@@ -303,43 +303,99 @@ def parse_profiles(filename):
     return profile_data
 
 def computeLogPSSM(profile_matrix):
-    # odds = profile_matrix / backprobs[:-1]
-    # odds_safe = np.where(odds > 0.0, odds, 0.0)
-    consensus = np.int8(np.argmax(profile_matrix, axis=1))
-    # consensus = np.int8(np.argmax(profile_matrix, axis=1))
-    profile = []
-    query_length, profile_aa_size = profile_matrix.shape
-    for pos in range(query_length):
-        for aa in range(profile_aa_size):
-            aaProb = profile_matrix[pos][aa]
-            x = aaProb / backprobs[aa]
-            # Guard against non-positive values
-            if x <= 0:
-                logProb = -128.0
-            else:
-                logProb = math.log2(x)
-            pssmVal = logProb * bitFactor
-            if pssmVal < 0.0:
-                pssmVal = int(pssmVal - 0.5)
-            else:
-                pssmVal = int(pssmVal + 0.5)
-            truncPssmVal = max(-128, min(pssmVal, 127))
-            profile.append(np.int8(truncPssmVal))
-    return profile, consensus
+    # profile_matrix: (L, 20)
+    # backprobs: (20,)
+    # bitFactor: scalar
+
+    # consensus
+    consensus = np.argmax(profile_matrix, axis=1).astype(np.int8)
+
+    # odds
+    odds = profile_matrix / backprobs[None, :]
+
+    # guard against non-positive
+    odds_safe = np.where(odds > 0.0, odds, np.nan)
+
+    # log2
+    log_probs = np.log2(odds_safe)
+
+    # scale
+    pssm = log_probs * bitFactor
+
+    # round like your logic
+    pssm = np.where(pssm < 0, pssm - 0.5, pssm + 0.5)
+    pssm = pssm.astype(np.int32)
+
+    # clip to int8 range
+    pssm = np.clip(pssm, -128, 127)
+
+    # replace invalids
+    pssm = np.nan_to_num(pssm, nan=-128).astype(np.int8)
+
+    # flatten (L*20,)
+    return pssm.ravel(), consensus
+
+# def computeLogPSSM(profile_matrix):
+#     # odds = profile_matrix / backprobs[:-1]
+#     # odds_safe = np.where(odds > 0.0, odds, 0.0)
+#     consensus = np.int8(np.argmax(profile_matrix, axis=1))
+#     # consensus = np.int8(np.argmax(profile_matrix, axis=1))
+#     profile = []
+#     query_length, profile_aa_size = profile_matrix.shape
+#     for pos in range(query_length):
+#         for aa in range(profile_aa_size):
+#             aaProb = profile_matrix[pos][aa]
+#             x = aaProb / backprobs[aa]
+#             # Guard against non-positive values
+#             if x <= 0:
+#                 logProb = -128.0
+#             else:
+#                 logProb = math.log2(x)
+#             pssmVal = logProb * bitFactor
+#             if pssmVal < 0.0:
+#                 pssmVal = int(pssmVal - 0.5)
+#             else:
+#                 pssmVal = int(pssmVal + 0.5)
+#             truncPssmVal = max(-128, min(pssmVal, 127))
+#             profile.append(np.int8(truncPssmVal))
+#     return profile, consensus
 
 def toBuffer_pssm(profile, consensus):
-    result = []
-    query_length = len(consensus)
-    for pos in range(query_length):
-        for aa in range(20):
-            result.append(struct.pack('b', profile[20 * pos + aa]))
-        # Append consensus twice and three zeros (unsigned bytes)
-        result.append(struct.pack('B', consensus[pos]))
-        result.append(struct.pack('B', consensus[pos]))
-        result.append(struct.pack('B', 0))
-        result.append(struct.pack('B', 0))
-        result.append(struct.pack('B', 0))
-    return b"".join(result)
+    L = len(consensus)
+    buf = bytearray(L * 25)
+
+    offset = 0
+    prof = memoryview(profile)
+
+    for i in range(L):
+        # 20 profile bytes
+        buf[offset:offset+20] = prof[i*20:(i+1)*20]
+        offset += 20
+
+        c = consensus[i]
+        buf[offset]   = c
+        buf[offset+1] = c
+        buf[offset+2] = 0
+        buf[offset+3] = 0
+        buf[offset+4] = 0
+        offset += 5
+
+    return bytes(buf)
+
+
+# def toBuffer_pssm(profile, consensus):
+#     result = []
+#     query_length = len(consensus)
+#     for pos in range(query_length):
+#         for aa in range(20):
+#             result.append(struct.pack('b', profile[20 * pos + aa]))
+#         # Append consensus twice and three zeros (unsigned bytes)
+#         result.append(struct.pack('B', consensus[pos]))
+#         result.append(struct.pack('B', consensus[pos]))
+#         result.append(struct.pack('B', 0))
+#         result.append(struct.pack('B', 0))
+#         result.append(struct.pack('B', 0))
+#     return b"".join(result)
 
 def build_lookup(filename):
     lookup = {}
