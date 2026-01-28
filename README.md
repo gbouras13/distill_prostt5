@@ -1,13 +1,12 @@
 # distill_prostt5
 
-* This is a somewhat experimental training and inference repository for creating ModernProst 
-    * ModernProst is a [ModernBERT](https://arxiv.org/abs/2412.13663)-based protein language model that directly translates Amino Acid tokens to 3Di 
+* This is the somewhat experimental training and inference repository for creating ModernProst 
+    * ModernProst is a [ModernBERT](https://arxiv.org/abs/2412.13663)-based protein classification model that directly translates Amino Acid tokens to 3Di at each residue
     * The final model is 48M parameters and is available as [modernprost-base](https://huggingface.co/gbouras13/modernprost-base) which translates AA->3Di 
-    * We also make available [modernprost-profile]() which infers a predicted 3Di PSSM directly from AA input. This model was post-trained on top of modernprost-base.
-* Note: You can also use this repository to directly distill [ProstT5](https://github.com/mheinzinger/ProstT5) although no distillation was actually used in the final ModernProst model as training was not substantially different to training `modernprost-base` from scratch
-* Note: There are other experimental features/parameters (e.g. anything involing `plddt`) that may be included that are not related to the training of `modernprost`. Please use them with caution.
+    * We also make available [modernprost-profiles](https://huggingface.co/gbouras13/modernprost-profiles) which infers a predicted 3Di PSSM directly from AA input. This model was post-trained on top of modernprost-base.
+* Note: You can also use this repository to directly distill [ProstT5](https://github.com/mheinzinger/ProstT5) although no distillation was actually used in the final ModernProst model as training was not substantially different to training `modernprost-base` from scratch, so decided to do this due to our expanded dataset
+* Note: There are other experimental features/parameters (e.g. anything involing `plddt`) that may be included that are not related to the training of `modernprost`. Please use them with caution YMMV.
 * For directly replication of the exact `modernprost-base` training commands and versions, please see the `replication` subdirectory
-* More to come
 
 ## Installation
 
@@ -24,6 +23,7 @@ pip install -e .
 ## Example - Training Model From Scratch (no distillation)
 
 * This is how `modernprost-base` was trained
+* Note you can simply downloaded the training and validation dataset (both as FASTA and preprocessed into `.h5` files) from HuggingFace [here](https://huggingface.co/datasets/gbouras13/ModernProst-base)
 
 ### Step 1 - precompute input data
 
@@ -158,18 +158,9 @@ Options:
 ```
 
 
+ ## Step 3 - infer
 
-
-
-
-
-
-
-
-
-
-
- ## Step 4 - infer
+* This takes a checkpoint directory and infers the 3Di sequences for a given protein `.faa` input file.
 
  ```bash
  distill_prostt5 infer -i tests/test_data/swissprot_subset_aa_50.fasta -o test_infer -m checkpoint-308000/
@@ -220,48 +211,4 @@ Options:
   --chunk_len INTEGER           chunk length
   --threads INTEGER             number of threads (only for cpu mode)
   ```
-
-
-# 25 August 2025.  
-
-
-* Note that is is best to build the container on top of the known working v0.4.1 container. Pytorch nightly builds caused strange, non-convergent behaviour for updated training runs
-
-# 21 Dec
-
-* Update to building on top of Pawsey pytorch 2.7.1 container
-
-* Try context extension -> 
-
-```bash
-
-* Actual command
-
-```bash
-python scripts/filter_fastas.py -c 10000clusters.fasta -i fasta/prostT5_dataset.fasta -o prostT5_filt_aa.fasta
-python scripts/filter_fastas.py -c 10000clusters.fasta -i fasta/prostT5_dataset_ss.fasta  -o prostT5_filt_ss.fasta
-
-distill_prostt5 precompute --no_logits -i prostT5_filt_aa.fasta -c prostT5_filt_ss.fasta -p prostT5_training.h5
-distill_prostt5 precompute --no_logits -i 10000clusters.fasta -c 10000clusters_ss.fasta -p prostT5_validation.h5
-```
-
-module  load pawseyenv/2023.08
-module load singularity/3.11.4-slurm
-containerImage="distill_prostt5_0.4.1.sif"
-
-singularity exec --rocm  $containerImage distill_prostt5 precompute --help
-
-
-
-python ../distill_prostt5/scripts/extend_dataset_context_length.py -i prostT5_filt_aa.fasta -o prostT5_filt_aa_context_length_extension.fasta -l 768
-
-python ../distill_prostt5/scripts/extend_dataset_context_length.py -i prostT5_filt_ss.fasta -o prostT5_filt_ss_context_length_extension.fasta -l 768
-
-
-
-singularity exec --rocm  $containerImage  distill_prostt5 precompute --no_logits -i prostT5_filt_aa_context_length_extension.fasta -c prostT5_filt_ss_context_length_extension.fasta -p prostT5_training_2048.h5 -m 2048
-
-singularity exec --rocm  $containerImage  distill_prostt5 precompute --no_logits -i 10000clusters.fasta -c 10000clusters_ss.fasta -p prostT5_validation_2048.h5 -m 2048
-
-```
 
