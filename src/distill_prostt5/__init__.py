@@ -1053,6 +1053,8 @@ def infer(
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     pssm_db_builder = None
     mmseqs_db = None
+
+
     if task == "pssm" and profile_mmseqs_db is not None:
         mmseqs_db = os.path.abspath(profile_mmseqs_db)
         mmseqs_db_lookup = mmseqs_db + ".lookup"
@@ -1555,14 +1557,18 @@ def infer(
                         pdb_ids, seqs, seq_lens = zip(*batch)
                         batch = list()
 
-                        inputs = tokenizer.batch_encode_plus(
+                        # support Transformers v5
+                        inputs = tokenizer(
                             seqs,
-                            add_special_tokens=True,
+                            add_special_tokens=False,
                             padding="longest",
-                            return_tensors="pt",
+                            truncation=False,
+                            return_tensors="pt"
                         ).to(device)
+
+
+
                         inputs = {k: v for k, v in inputs.items() if k != "token_type_ids"}
-                        #inputs = {k: v for k, v in inputs.items() if k != "token_type_ids"}
                         inputs = {k: v.to(device) for k, v in inputs.items()}
                         try:
                             with torch.no_grad():
