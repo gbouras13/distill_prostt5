@@ -6,7 +6,7 @@
     * We also make available [modernprost-profiles](https://huggingface.co/gbouras13/modernprost-profiles) which infers a predicted 3Di PSSM directly from AA input. This model was post-trained on top of modernprost-base.
 * Note: You can also use this repository to directly distill [ProstT5](https://github.com/mheinzinger/ProstT5) although no distillation was actually used in the final ModernProst model as training was not substantially different to training `modernprost-base` from scratch, so decided to do this due to our expanded dataset
 * Note: There are other experimental features/parameters (e.g. anything involing `plddt`) that may be included that are not related to the training of `modernprost`. Please use them with caution YMMV.
-* For directly replication of the exact `modernprost-base` training commands and versions, please see the `replication` subdirectory
+* For direct replication of the exact `modernprost-base` training commands and versions, please see the `replication` subdirectory
 
 ## Installation
 
@@ -23,7 +23,7 @@ pip install -e .
 ## Example - Training Model From Scratch (no distillation)
 
 * This is how `modernprost-base` was trained
-* Note you can simply downloaded the training and validation dataset (both as FASTA and preprocessed into `.h5` files) from HuggingFace [here](https://huggingface.co/datasets/gbouras13/ModernProst-base)
+* Note you can simply download the training and validation dataset (both as FASTA and preprocessed into `.h5` files) from HuggingFace [here](https://huggingface.co/datasets/gbouras13/ModernProst-base)
 
 ### Step 1 - precompute input data
 
