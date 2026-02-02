@@ -1420,60 +1420,60 @@ def infer(
                                     print(fmt_profile(probs[batch_idx, :L, :]), file=fh)
                                     print("", file=fh)
 
-                if task == "classification":
-                    # --- recombine chunked sequences ---
-                    for pid, chunks in chunk_store.items():
-                        preds = []
-                        probs_all = []
-                        plddts = []
+            if task == "classification":
+                # --- recombine chunked sequences ---
+                for pid, chunks in chunk_store.items():
+                    preds = []
+                    probs_all = []
+                    plddts = []
 
-                        for idx in sorted(chunks):
-
-                            if plddt_head:
-
-                                pred, prob, plddt = chunks[idx]
-                            else:
-                                pred, prob = chunks[idx]
-
-
-                            preds.append(pred)
-                            if prob is not None:
-                                probs_all.append(prob)
-                            if plddt_head:
-                                plddts.append(plddt)
+                    for idx in sorted(chunks):
 
                         if plddt_head:
-                            plddt_full = np.concatenate(plddts)
 
-                        pred_full = np.concatenate(preds)
-
-                        if probs_all:
-                            probs_full = np.concatenate(probs_all)
-                            mean_prob = round(100 * probs_full.mean(), 2)
+                            pred, prob, plddt = chunks[idx]
                         else:
-                            probs_full = None
-                            mean_prob = None
+                            pred, prob = chunks[idx]
 
+
+                        preds.append(pred)
+                        if prob is not None:
+                            probs_all.append(prob)
                         if plddt_head:
-                            plddt_full = np.concatenate(plddts)
-                            batch_predictions[pid] = (
-                                pred_full,
-                                mean_prob,
-                                probs_full,
-                                plddt_full,
-                            )
-                        else:
-                            batch_predictions[pid] = (
-                                pred_full,
-                                mean_prob,
-                                probs_full,
-                            )
+                            plddts.append(plddt)
 
-                    # --- reorder to match original FASTA ---
-                    predictions[record_id] = {}
-                    for k in original_keys:
-                        if k in batch_predictions:
-                            predictions[record_id][k] = batch_predictions[k]
+                    if plddt_head:
+                        plddt_full = np.concatenate(plddts)
+
+                    pred_full = np.concatenate(preds)
+
+                    if probs_all:
+                        probs_full = np.concatenate(probs_all)
+                        mean_prob = round(100 * probs_full.mean(), 2)
+                    else:
+                        probs_full = None
+                        mean_prob = None
+
+                    if plddt_head:
+                        plddt_full = np.concatenate(plddts)
+                        batch_predictions[pid] = (
+                            pred_full,
+                            mean_prob,
+                            probs_full,
+                            plddt_full,
+                        )
+                    else:
+                        batch_predictions[pid] = (
+                            pred_full,
+                            mean_prob,
+                            probs_full,
+                        )
+
+                # --- reorder to match original FASTA ---
+                predictions[record_id] = {}
+                for k in original_keys:
+                    if k in batch_predictions:
+                        predictions[record_id][k] = batch_predictions[k]
             
     else:
         for record_id, cds_records in cds_dict.items():
