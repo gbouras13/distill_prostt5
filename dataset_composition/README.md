@@ -21,7 +21,7 @@ A: 0.0846 C: 0.0147 D: 0.0558 E: 0.0617 F: 0.0395 G: 0.0689 H: 0.0222 I: 0.0547 
 A: 0.0283 C: 0.0290 D: 0.2436 E: 0.0128 F: 0.0189 G: 0.0219 H: 0.0228 I: 0.0191 K: 0.0168 L: 0.0630 M: 0.0068 N: 0.0229 P: 0.1059 Q: 0.0404 R: 0.0248 S: 0.0583 T: 0.0157 V: 0.2156 W: 0.0194 Y: 0.0140 
 ```
 
-* More D's (loopy) at the expense of V's (helices) compared to ProstT5 and PDB
+* More D's (loopy) at the expense of V's (helices) compared to ProstT5 and PDB (compared to the ProstT5 Supplementary Figure)
 
 
 ## singletons
@@ -29,6 +29,7 @@ A: 0.0283 C: 0.0290 D: 0.2436 E: 0.0128 F: 0.0189 G: 0.0219 H: 0.0228 I: 0.0191 
 * 21.8M of them
 * Average length of 162.79 AA
 * Even more extreme upweighting of D's and V's
+* Note these were not used for training in the end - but can still be found on HuggingFace if super keen
 
 AA
 

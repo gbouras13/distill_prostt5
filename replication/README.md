@@ -11,14 +11,15 @@
 
 * You must first download and ungzip the required FASTAs from HuggingFace [here](https://huggingface.co/datasets/gbouras13/ModernProst-base) containing the ~19M proteins containing 4.3 million non-singleton clusters, which, when expanded to up to 20 most diverse members
 * You can of course simply use the preprocessed `.h5` files there also
+* Yes, for some
 
 ```bash
 
 containerImage="distill_prostt5_0.4.1.sif"
 
-singularity exec $containerImage distill_prostt5 precompute --no_logits -i prostT5_filt_aa.fasta  -c prostT5_filt_ss.fasta  -p prostT5_training.h5 -m 512
+singularity exec $containerImage distill_prostt5 precompute --no_logits -i modernprost_filt_aa.fasta  -c modernprost_filt_ss.fasta  -p modernprost_training.h5 -m 512
 
-singularity exec $containerImage  distill_prostt5 precompute --no_logits -i 10000clusters.fasta -c 10000clusters_ss.fasta -p prostT5_validation.h5 -m 512
+singularity exec $containerImage  distill_prostt5 precompute --no_logits -i 10000clusters.fasta -c 10000clusters_ss.fasta -p modernprost_validation.h5 -m 512
 ```
 
 ## modernprost-profiles (AA -> 3Di PSSM)
@@ -38,7 +39,7 @@ WARMUP_RATIO="0.05"
 OUTDIR="50M"
 
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec --env NCCL_DEBUG=INFO --rocm  $containerImage \
-        python distill_prostt5/run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 
+        python distill_prostt5/run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 
         
         # to continue training add the path to the checkpoint e.g. -m checkpoint-${CHECKPOINT}
 ```
@@ -78,7 +79,7 @@ WARMUP_RATIO="0.05"
 OUTDIR="345M"
 
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec  --env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 12 -b $BATCH_SIZE --logging_eval_steps 5000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 1000  # -m checkpoint-${CHECKPOINT}
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 12 -b $BATCH_SIZE --logging_eval_steps 5000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 1000  # -m checkpoint-${CHECKPOINT}
 ```
 
 ### 176M
@@ -94,7 +95,7 @@ WARMUP_RATIO="0.05"
 OUTDIR="176M"
 
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec --env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 12 -b $BATCH_SIZE --logging_eval_steps 5000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 1000  # -m checkpoint-${CHECKPOINT}
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 12 -b $BATCH_SIZE --logging_eval_steps 5000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 1000  # -m checkpoint-${CHECKPOINT}
 
 
 ```
@@ -111,7 +112,7 @@ WARMUP_RATIO="0.1"
 OUTDIR="${NUM_HEADS}_${NUM_LAYERS}_${BATCH_SIZE}_${HIDDEN_DIM}_${INTERMEDIATE_DIM}_from_scratch_${WARMUP_RATIO}"
 
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec  --env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 12 -b $BATCH_SIZE --logging_eval_steps 1000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 1000  # -m checkpoint-${CHECKPOINT}
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 12 -b $BATCH_SIZE --logging_eval_steps 1000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 1000  # -m checkpoint-${CHECKPOINT}
 ```
 
 ### 87M
@@ -128,7 +129,7 @@ WARMUP_RATIO="0.05"
 OUTDIR="87M"
 
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec --env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 #  -m checkpoint-${CHECKPOINT} 
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 #  -m checkpoint-${CHECKPOINT} 
 ```
 
 ### 75M
@@ -143,7 +144,7 @@ WARMUP_RATIO="0.05"
 OUTDIR="75M"
 
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec  --env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000  # -m checkpoint-${CHECKPOINT} 
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000  # -m checkpoint-${CHECKPOINT} 
 ```
 
 ### 25M
@@ -160,7 +161,7 @@ OUTDIR="25M"
 
 singularity exec --rocm $containerImage python -c "import torch; print(torch.cuda.device_count())"
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec  --env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000  # -m checkpoint-${CHECKPOINT} 
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000  # -m checkpoint-${CHECKPOINT} 
 ```
 
 ### 15M
@@ -177,7 +178,7 @@ OUTDIR="15M"
 #singularity exec --rocm $containerImage rocminfo
 singularity exec --rocm $containerImage python -c "import torch; print(torch.cuda.device_count())"
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec --env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 # -m checkpoint-${CHECKPOINT} 
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 # -m checkpoint-${CHECKPOINT} 
 ```
 
 ### 10M
@@ -193,7 +194,7 @@ OUTDIR="10M"
 
 singularity exec --rocm $containerImage python -c "import torch; print(torch.cuda.device_count())"
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec  --env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000  # -m checkpoint-${CHECKPOINT} 
+	python run.py train -p modernprost_training.h5 -e modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000  # -m checkpoint-${CHECKPOINT} 
 ```
 
 ### 5M
@@ -209,7 +210,7 @@ OUTDIR="5M"
 
 singularity exec --rocm $containerImage python -c "import torch; print(torch.cuda.device_count())"
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec s--env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 #  -m checkpoint-${CHECKPOINT} 
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 #  -m checkpoint-${CHECKPOINT} 
 ```
 
 ### 5M
@@ -225,7 +226,7 @@ OUTDIR="5M"
 
 singularity exec --rocm $containerImage python -c "import torch; print(torch.cuda.device_count())"
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec s--env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 #  -m checkpoint-${CHECKPOINT} 
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 #  -m checkpoint-${CHECKPOINT} 
 ```
 
 ### 1M
@@ -239,7 +240,7 @@ BATCH_SIZE="512"
 WARMUP_RATIO="0.005"
 
 srun --time=23:40:00 -N1 -n1 -c64 --gres=gpu:8 singularity exec s--env NCCL_DEBUG=INFO --rocm  $containerImage \
-	python run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 #  -m checkpoint-${CHECKPOINT} 
+	python run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 8e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 10 -b $BATCH_SIZE --logging_eval_steps 2500  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 5000 #  -m checkpoint-${CHECKPOINT} 
 ```
 
 
@@ -274,7 +275,7 @@ srun -c 64 singularity exec   --rocm $containerImage torchrun \
     --rdzv_id=$SLURM_JOB_ID \
     --rdzv_backend=c10d \
     --rdzv_endpoint="$RDZV_HOST:$RDZV_PORT" \
-    distill_prostt5/run.py train -p prostT5_training.h5 -e  prostT5_validation.h5  -o $OUTDIR --learning_rate 5e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 50 -b $BATCH_SIZE --logging_eval_steps 5000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 500  # -m $CKPT_BASE/${CHECKPOINT}
+    distill_prostt5/run.py train -p modernprost_training.h5 -e  modernprost_validation.h5  -o $OUTDIR --learning_rate 5e-4  --no_logits --warmup_ratio $WARMUP_RATIO  -a 1 --epochs 50 -b $BATCH_SIZE --logging_eval_steps 5000  --num_workers 8 --num_heads $NUM_HEADS --num_layers $NUM_LAYERS --hidden_size $HIDDEN_DIM --intermediate_size $INTERMEDIATE_DIM --save_steps 500  # -m $CKPT_BASE/${CHECKPOINT}
 ```
 
 
