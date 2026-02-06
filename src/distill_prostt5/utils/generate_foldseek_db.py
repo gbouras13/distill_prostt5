@@ -69,15 +69,15 @@ def generate_foldseek_db(in_fasta, in_3di, outdir, db_name):
 
     # create Foldseek databases
     sp.run(
-        ["foldseek", "tsv2db", str(aa_tsv), f"{outdir}/db_name", "--output-dbtype", "0"],
+        ["foldseek", "tsv2db", str(aa_tsv), f"{outdir}/{db_name}", "--output-dbtype", "0"],
         check=True,
     )
     sp.run(
-        ["foldseek", "tsv2db", str(di_tsv), f"{outdir}/db_name_ss", "--output-dbtype", "0"],
+        ["foldseek", "tsv2db", str(di_tsv), f"{outdir}/{db_name}_ss", "--output-dbtype", "0"],
         check=True,
     )
     sp.run(
-        ["foldseek", "tsv2db", str(header_tsv), f"{outdir}/db_name_h", "--output-dbtype", "12"],
+        ["foldseek", "tsv2db", str(header_tsv), f"{outdir}/{db_name}_h", "--output-dbtype", "12"],
         check=True,
     )
 
