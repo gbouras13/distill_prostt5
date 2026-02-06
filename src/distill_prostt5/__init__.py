@@ -1008,6 +1008,8 @@ def infer(
 ):
     """Infers 3Di from input AA FASTA"""
 
+    logger.add(lambda _: sys.exit(1), level="ERROR")
+
     def chunk_sequence(seq, max_len):
         """
         Yield (start, subseq) splitting seq into `max_len` nearly equal chunks.
