@@ -31,6 +31,7 @@ import random
 import shutil
 from collections import defaultdict
 
+
 seed = 30
 torch.manual_seed(seed)
 np.random.seed(seed)
@@ -44,6 +45,7 @@ from distill_prostt5.classes.MPROSTT5_bert import MPROSTT5, MPROSTT5_PSSM, Custo
 from distill_prostt5.classes.datasets import ProteinDataset, PrecomputedProteinDataset, ProteinDatasetNoLogits, ProteinDatasetPlddt, PrecomputedProteinDatasetPlddt, ProteinPSSMDataset, PrecomputedProteinPSSMDataset, pssm_collate_fn, fmt_profile
 from distill_prostt5.utils.inference import write_predictions, toCPU, write_probs, write_plddt, toBuffer_pssm, copy_and_create_extras, computeLogPSSM, build_lookup, sort_index_file, parse_substitution_matrix_seq, generate_profile_for_sequence, pack_profile_seq, read_sequences, build_database_seq
 from distill_prostt5.utils.initialisation import  init_large_from_base
+from distill_prostt5.utils.generate_foldseek_db import generate_foldseek_db
 
 log_fmt = (
     "[<green>{time:YYYY-MM-DD HH:mm:ss}</green>] <level>{level: <8}</level> | "
@@ -969,6 +971,11 @@ def train(
     type=int,
     default=1,
 )
+@click.option(
+    "--foldseek_db",
+    help="generate foldseek db after inference. Will be in output_dir/foldseekdb and called db. Only for the classification task (not pssm). Required Foldseek to be installed in $PATH",
+    is_flag=True,
+)
 def infer(
     ctx,
     input,
@@ -996,6 +1003,7 @@ def infer(
     sample_seqs,
     chunk_len,
     threads,
+    foldseek_db,
     **kwargs,
 ):
     """Infers 3Di from input AA FASTA"""
@@ -1729,6 +1737,15 @@ def infer(
         write_probs(predictions,output_path_mean, plddt_head)
         if plddt_head:
             write_plddt(predictions,output_path_plddt)
+
+        # foldseek db
+        if foldseek_db:
+            logger.info(f"Creating foldseek db at {output_dir}/foldseek_db/db")
+            db_name = "db"
+            fs_out_dir: Path = Path(output_dir) / "foldseekdb"
+            fs_out_dir.mkdir(parents=True, exist_ok=True)
+
+            generate_foldseek_db(input, output_3di, fs_out_dir, db_name)
     
 """
 precompute_plddt command
