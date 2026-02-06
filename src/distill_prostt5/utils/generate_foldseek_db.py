@@ -52,7 +52,7 @@ def generate_foldseek_db(in_fasta, in_3di, outdir, db_name):
     aa_tsv = tmp_dir / "aa.tsv"
     di_tsv = tmp_dir / "3di.tsv"
     header_tsv = tmp_dir / "header.tsv"
-    lookup_path = Path(f"{db_name}.lookup")
+    lookup_path = Path(f"{outdir}/{db_name}.lookup")
 
     # generate TSV files
     with (
@@ -69,15 +69,15 @@ def generate_foldseek_db(in_fasta, in_3di, outdir, db_name):
 
     # create Foldseek databases
     sp.run(
-        ["foldseek", "tsv2db", str(aa_tsv), db_name, "--output-dbtype", "0"],
+        ["foldseek", "tsv2db", str(aa_tsv), f"{outdir}/db_name", "--output-dbtype", "0"],
         check=True,
     )
     sp.run(
-        ["foldseek", "tsv2db", str(di_tsv), f"{db_name}_ss", "--output-dbtype", "0"],
+        ["foldseek", "tsv2db", str(di_tsv), f"{outdir}/db_name_ss", "--output-dbtype", "0"],
         check=True,
     )
     sp.run(
-        ["foldseek", "tsv2db", str(header_tsv), f"{db_name}_h", "--output-dbtype", "12"],
+        ["foldseek", "tsv2db", str(header_tsv), f"{outdir}/db_name_h", "--output-dbtype", "12"],
         check=True,
     )
 
