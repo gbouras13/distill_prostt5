@@ -6,7 +6,7 @@ from pathlib import Path
 
 def generate_foldseek_db(in_fasta, in_3di, outdir, db_name):
 
-    outdir = Path(f"{outdir}/tmp")
+    tmp_dir = Path(f"{outdir}/tmp")
 
 
     try:
@@ -24,7 +24,6 @@ def generate_foldseek_db(in_fasta, in_3di, outdir, db_name):
     )
 
 
-    tmp_dir = Path(tmp_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     # read amino-acid sequences (preserve order)
