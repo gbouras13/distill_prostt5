@@ -1029,7 +1029,12 @@ def infer(
     if task == "pssm":
         model = MPROSTT5_PSSM(hidden_size=hidden_size, intermediate_size=intermediate_size,  num_layers=num_layers, num_heads=num_heads)
     else:
-        model = MPROSTT5(hidden_size=hidden_size, intermediate_size=intermediate_size,  num_layers=num_layers, num_heads=num_heads)
+        model = MPROSTT5(hidden_size=hidden_size, 
+            intermediate_size=intermediate_size,  
+            num_layers=num_layers, num_heads=num_heads, 
+            step_down=step_down, 
+            step_down_ratio=step_down_ratio,
+            plddt_head_flag=plddt_head)
     if half:
         model.half()
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -1107,12 +1112,6 @@ def infer(
 
     # only use swiglu
 
-    # model = MPROSTT5(hidden_size=hidden_size, 
-    # intermediate_size=intermediate_size,  
-    # num_layers=num_layers, num_heads=num_heads, 
-    # step_down=step_down, 
-    # step_down_ratio=step_down_ratio,
-    # plddt_head_flag=plddt_head)
 
     state_dict = load_file(f"{model_ckpt}/model.safetensors")
     model.load_state_dict(state_dict)
